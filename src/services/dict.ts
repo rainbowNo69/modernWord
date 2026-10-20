@@ -1,7 +1,22 @@
 import type { DictEntry, VocabWord, DifficultyLevel } from '../types';
 
-// Compact dict entry: [phonetic, translation, tag, frq]
-type CompactEntry = [string, string, string, number];
+// Compact dict entry stored in data/dict.json
+interface CompactEntry {
+  p: string; // phonetic
+  t: string; // translation
+  tag: string; // comma separated: gk,cet4,cet6,ky,ielts,toefl,gre
+  frq: number; // frequency rank
+}
+
+function toDictEntry(word: string, entry: CompactEntry): DictEntry {
+  return {
+    word,
+    phonetic: entry.p ?? '',
+    translation: entry.t ?? '',
+    tag: entry.tag ?? '',
+    frq: entry.frq ?? 99999,
+  };
+}
 
 let dictCache: Record<string, CompactEntry> | null = null;
 let lemmaCache: Record<string, string> | null = null;
@@ -22,8 +37,8 @@ export async function loadDictionary(): Promise<void> {
       throw new Error('词典数据加载失败，请确保已运行词典处理脚本');
     }
 
-    dictCache = await dictRes.json() as Record<string, CompactEntry>;
-    lemmaCache = await lemmaRes.json() as Record<string, string>;
+    dictCache = (await dictRes.json()) as Record<string, CompactEntry>;
+    lemmaCache = (await lemmaRes.json()) as Record<string, string>;
   })();
 
   return loadingPromise;
@@ -36,13 +51,7 @@ export function lookupWord(word: string): DictEntry | null {
   // Try direct lookup
   const entry = dictCache[word];
   if (entry) {
-    return {
-      word,
-      phonetic: entry[0],
-      translation: entry[1],
-      tag: entry[2],
-      frq: entry[3],
-    };
+    return toDictEntry(word, entry);
   }
 
   // Try lemma lookup
@@ -51,13 +60,7 @@ export function lookupWord(word: string): DictEntry | null {
     if (lemma) {
       const lemmaEntry = dictCache[lemma];
       if (lemmaEntry) {
-        return {
-          word: lemma,
-          phonetic: lemmaEntry[0],
-          translation: lemmaEntry[1],
-          tag: lemmaEntry[2],
-          frq: lemmaEntry[3],
-        };
+        return toDictEntry(lemma, lemmaEntry);
       }
     }
   }

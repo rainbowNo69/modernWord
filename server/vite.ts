@@ -6,18 +6,20 @@ import express from 'express';
 import path from 'path';
 import fs from 'fs';
 import { createServer as createViteServer } from 'vite';
-import viteConfig from '../vite.config';
 
 const isDev = process.env.COZE_PROJECT_ENV !== 'PROD';
 
 /**
  * 集成 Vite 开发服务器（中间件模式）
+ *
+ * 注意：这里不能再把 vite.config 展开传进来。Vite 默认会自动加载根目录的
+ * vite.config.ts，展开后 react 插件会在 plugins 里出现两次，导致 React Refresh
+ * 前缀被注入两遍，源文件编译报 "The symbol has already been declared"。
+ * 因此只传中间件模式相关配置，其余交给 Vite 自行读取配置文件。
  */
 export async function setupViteMiddleware(app: Application) {
   const vite = await createViteServer({
-    ...viteConfig,
     server: {
-      ...viteConfig.server,
       middlewareMode: true,
     },
     appType: 'spa',
