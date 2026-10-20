@@ -11,7 +11,11 @@
     "lint:style": "stylelint \"src/**/*.css\"",
     "start": "bash ./scripts/start.sh",
     "ts-check": "tsc -p tsconfig.json",
-    "validate": "pnpm dlx concurrently --group --names lint-tsc,lint-build,lint-style \"pnpm ts-check\" \"pnpm lint:build\" \"pnpm lint:style\""
+    "validate": "pnpm dlx concurrently --group --names lint-tsc,lint-build,lint-style \"pnpm ts-check\" \"pnpm lint:build\" \"pnpm lint:style\"",
+    "build:win": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/build.ps1",
+    "dev:win": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/dev.ps1",
+    "start:win": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/start.ps1",
+    "validate:win": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/validate.ps1"
   },
   "dependencies": {
     "@supabase/supabase-js": "2.95.3",
