@@ -1,0 +1,40 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-stone-50 text-stone-900 font-sans antialiased;
+    line-height: 1.6;
+  }
+}
+
+@layer components {
+  .tag-gk {
+    @apply bg-green-100 text-green-700;
+  }
+  .tag-cet4 {
+    @apply bg-blue-100 text-blue-700;
+  }
+  .tag-cet6 {
+    @apply bg-violet-100 text-violet-700;
+  }
+  .tag-ky {
+    @apply bg-orange-100 text-orange-700;
+  }
+  .tag-ielts {
+    @apply bg-red-100 text-red-700;
+  }
+  .tag-toefl {
+    @apply bg-pink-100 text-pink-700;
+  }
+  .tag-gre {
+    @apply bg-indigo-100 text-indigo-700;
+  }
+}
+
+@layer utilities {
+  .scrollbar-thin {
+    scrollbar-width: thin;
+  }
+}

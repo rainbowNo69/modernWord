@@ -1,0 +1,57 @@
+[project]
+requires = [ "nodejs-24" ]
+project_type = "web"
+template = "vite"
+version = "0.1.8"
+appliedPatches = [ ]
+
+[dev]
+build = [ "bash", "./scripts/prepare.sh" ]
+build_win = [
+  "powershell.exe",
+  "-NoProfile",
+  "-ExecutionPolicy",
+  "Bypass",
+  "-File",
+  "./scripts/prepare.ps1"
+]
+run = [ "bash", "./scripts/dev.sh" ]
+run_win = [
+  "powershell.exe",
+  "-NoProfile",
+  "-ExecutionPolicy",
+  "Bypass",
+  "-File",
+  "./scripts/dev.ps1"
+]
+validate = [ "bash", "./scripts/validate.sh" ]
+validate_win = [
+  "powershell.exe",
+  "-NoProfile",
+  "-ExecutionPolicy",
+  "Bypass",
+  "-File",
+  "./scripts/validate.ps1"
+]
+deps = [ "git" ]
+
+[deploy]
+build = [ "bash", "./scripts/build.sh" ]
+build_win = [
+  "powershell.exe",
+  "-NoProfile",
+  "-ExecutionPolicy",
+  "Bypass",
+  "-File",
+  "./scripts/build.ps1"
+]
+run = [ "bash", "./scripts/start.sh" ]
+run_win = [
+  "powershell.exe",
+  "-NoProfile",
+  "-ExecutionPolicy",
+  "Bypass",
+  "-File",
+  "./scripts/start.ps1"
+]
+deps = [ "git" ]
