@@ -44,25 +44,62 @@ export async function loadDictionary(): Promise<void> {
   return loadingPromise;
 }
 
+// ECDICT 收录的变形词（looking / parked / said）大多没有词频数据，会被当成生僻词留在结果里。
+// 这里在词表映射缺失时按常见后缀还原，且只接受"有词频数据的原形"，避免把 lens 拆成 len 之类的误判。
+const INFLECTION_CANDIDATES: Array<(word: string) => string[]> = [
+  w => (w.endsWith('ies') ? [w.slice(0, -3) + 'y'] : []),
+  w => (w.endsWith('es') ? [w.slice(0, -2), w.slice(0, -1)] : []),
+  w => (w.endsWith('s') ? [w.slice(0, -1)] : []),
+  w => (w.endsWith('ing') ? [w.slice(0, -3), w.slice(0, -3) + 'e', w.slice(0, -4)] : []),
+  w => (w.endsWith('ed') ? [w.slice(0, -2), w.slice(0, -1), w.slice(0, -3) + 'y'] : []),
+  w => (w.endsWith('er') ? [w.slice(0, -2), w.slice(0, -1), w.slice(0, -3) + 'y'] : []),
+  w => (w.endsWith('est') ? [w.slice(0, -3), w.slice(0, -2), w.slice(0, -4) + 'y'] : []),
+  w => (w.endsWith('ly') ? [w.slice(0, -2)] : []),
+];
+
+function matchBaseForm(word: string): string {
+  for (const build of INFLECTION_CANDIDATES) {
+    for (const candidate of build(word)) {
+      if (candidate.length < 2) continue;
+      const entry = dictCache?.[candidate];
+      if (entry && entry.frq > 0) return candidate;
+    }
+  }
+  return word;
+}
+
+function resolveLemma(word: string): string {
+  const mapped = lemmaCache?.[word];
+  if (mapped) return mapped;
+
+  if (dictCache) {
+    const entry = dictCache[word];
+    if (entry && entry.frq > 0) return word;
+    const base = matchBaseForm(word);
+    if (base !== word) return base;
+  }
+
+  return word;
+}
+
 // Look up a word in the dictionary
+// 优先返回原形词条的数据：ECDICT 里 "beaten" 也有独立词条（释义是"beat的过去分词"），
+// 而词表里展示的是原形 "beat"，取变形词条的音标和释义会对不上。
 export function lookupWord(word: string): DictEntry | null {
   if (!dictCache) return null;
 
-  // Try direct lookup
+  const lemma = resolveLemma(word);
+
+  // 先查原形
+  const lemmaEntry = dictCache[lemma];
+  if (lemmaEntry) {
+    return toDictEntry(lemma, lemmaEntry);
+  }
+
+  // 原形不在词典里时（比如词典只收了变形形式），退回变形词条
   const entry = dictCache[word];
   if (entry) {
     return toDictEntry(word, entry);
-  }
-
-  // Try lemma lookup
-  if (lemmaCache) {
-    const lemma = lemmaCache[word];
-    if (lemma) {
-      const lemmaEntry = dictCache[lemma];
-      if (lemmaEntry) {
-        return toDictEntry(lemma, lemmaEntry);
-      }
-    }
   }
 
   return null;
@@ -70,8 +107,7 @@ export function lookupWord(word: string): DictEntry | null {
 
 // Get lemma form of a word
 export function getLemma(word: string): string {
-  if (!lemmaCache) return word;
-  return lemmaCache[word] || word;
+  return resolveLemma(word);
 }
 
 // Check if word is in dictionary
@@ -155,29 +191,19 @@ function isProperNoun(word: string, line: string): boolean {
   return false;
 }
 
+// frq 是词频排名（越小越常用），没有排名数据的按生僻词处理。
+// 考试标签在 ECDICT 里是累积的（连 get 都带 ielts 标签），不适合用来分档，
+// 所以三档难度直接用词频排名切分。
+const DIFFICULTY_MIN_RANK: Record<DifficultyLevel, number> = {
+  gk: 2000, // 高考以上：剔除最常用的基础词
+  cet4: 4000, // 四六级以上
+  ky: 8000, // 考研/雅思以上
+};
+
 // Filter words based on difficulty level
 function passesDifficultyFilter(entry: DictEntry, level: DifficultyLevel): boolean {
-  const tags = entry.tag ? entry.tag.split(',').map(t => t.trim()) : [];
-  const frq = entry.frq || 99999;
-
-  switch (level) {
-    case 'gk': // 高考以上 - filter out only the most basic high-frequency words
-      // Keep everything except words that are ONLY tagged gk with very high frequency
-      if (tags.length === 0 && frq < 3000) return false;
-      return true;
-
-    case 'cet4': // 四六级以上 (default)
-      // Filter out basic words (gk-only or very high frequency)
-      if (tags.length === 0 && frq < 4000) return false;
-      if (tags.length > 0 && tags.every(t => t === 'gk') && frq < 5000) return false;
-      return true;
-
-    case 'ky': // 考研/雅思以上
-      // Only keep words with ky/ielts/toefl/gre tags, or very low frequency
-      if (tags.some(t => ['ky', 'ielts', 'toefl', 'gre'].includes(t))) return true;
-      if (tags.length === 0 && frq > 8000) return true;
-      return false;
-  }
+  const rank = entry.frq || 99999;
+  return rank >= DIFFICULTY_MIN_RANK[level];
 }
 
 // Main function: process transcript lines into vocab words

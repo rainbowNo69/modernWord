@@ -15,7 +15,14 @@ import { fileURLToPath } from 'url';
 import { createReadStream } from 'fs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const ECDICT_URL = 'https://raw.githubusercontent.com/skywind3000/ECDICT/master/ecdict.csv';
+// GitHub 直连在国内常被墙，这里给出镜像列表，按顺序逐个尝试。
+// 也可以直接用 ECDICT_URL 环境变量指定地址。
+const ECDICT_SOURCES = [
+  process.env.ECDICT_URL,
+  'https://raw.githubusercontent.com/skywind3000/ECDICT/master/ecdict.csv',
+  'https://ghproxy.net/https://raw.githubusercontent.com/skywind3000/ECDICT/master/ecdict.csv',
+  'https://gh-proxy.com/https://raw.githubusercontent.com/skywind3000/ECDICT/master/ecdict.csv',
+].filter(Boolean);
 const DATA_DIR = path.resolve(__dirname, '..', 'data');
 const CSV_PATH = path.join(DATA_DIR, 'ecdict.csv');
 const DICT_OUT = path.join(DATA_DIR, 'dict.json');
@@ -26,18 +33,35 @@ if (!fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
 }
 
-// Download file
-function download(url, dest) {
-  return new Promise((resolve, reject) => {
-    if (fs.existsSync(dest)) {
-      const stat = fs.statSync(dest);
-      if (stat.size > 1000000) {
-        console.log('CSV already downloaded, skipping...');
-        resolve();
-        return;
+// Download file（依次尝试各个源）
+async function download(dest) {
+  if (fs.existsSync(dest)) {
+    const stat = fs.statSync(dest);
+    if (stat.size > 1000000) {
+      console.log('CSV already downloaded, skipping...');
+      return;
+    }
+  }
+
+  for (const url of ECDICT_SOURCES) {
+    console.log(`Downloading ECDICT from ${new URL(url).host}...`);
+    try {
+      await downloadOnce(url, dest);
+      console.log('Download complete.');
+      return;
+    } catch (err) {
+      console.log(`  failed: ${err.message}`);
+      if (fs.existsSync(dest)) {
+        fs.rmSync(dest, { force: true });
       }
     }
-    console.log('Downloading ECDICT...');
+  }
+
+  throw new Error('所有下载源均失败');
+}
+
+function downloadOnce(url, dest) {
+  return new Promise((resolve, reject) => {
     const file = fs.createWriteStream(dest);
     const request = (currentUrl) => {
       https.get(currentUrl, { headers: { 'User-Agent': 'Node/18' } }, (response) => {
@@ -46,13 +70,13 @@ function download(url, dest) {
           return;
         }
         if (response.statusCode >= 400) {
+          file.close();
           reject(new Error(`HTTP ${response.statusCode}`));
           return;
         }
         response.pipe(file);
         file.on('finish', () => {
           file.close();
-          console.log('Download complete.');
           resolve();
         });
       }).on('error', reject);
@@ -93,6 +117,20 @@ function parseCSVLine(line) {
   return fields;
 }
 
+// ECDICT 存的是 DJ 音标（如 "'brekfәst"），里面混了西里尔字母和一些遗留符号，
+// 统一成 /xxx/ 的显示形式："^" 是遗留的 ɡ，"'" 是重音位置。
+function normalizePhonetic(phonetic) {
+  if (!phonetic) return '';
+  const cleaned = phonetic
+    .replace(/\^/g, 'ɡ')
+    .replace(/ә/g, 'ə')
+    .replace(/є/g, 'ɛ')
+    .replace(/'/g, 'ˈ')
+    .replace(/[@?\\]/g, '')
+    .trim();
+  return cleaned.startsWith('/') ? cleaned : `/${cleaned}/`;
+}
+
 // Read CSV header
 function readCSVHeader(csvPath) {
   const fd = fs.openSync(csvPath, 'r');
@@ -106,7 +144,7 @@ function readCSVHeader(csvPath) {
 // Main processing
 async function run() {
   // Download CSV
-  await download(ECDICT_URL, CSV_PATH);
+  await download(CSV_PATH);
   
   // Read header to get column indices
   const header = readCSVHeader(CSV_PATH);
@@ -151,7 +189,8 @@ async function run() {
         const word = (fields[colIndex['word']] || '').trim().toLowerCase();
         const phonetic = (fields[colIndex['phonetic']] || '').trim();
         const translation = (fields[colIndex['translation']] || '').trim();
-        const tag = (fields[colIndex['tag']] || '').trim();
+        // ECDICT 的 tag 是空格分隔的（如 "zk gk cet4"），前端按逗号切分，这里先统一成逗号分隔
+        const tag = (fields[colIndex['tag']] || '').trim().split(/\s+/).filter(Boolean).join(',');
         const bnc = parseInt(fields[colIndex['bnc']] || '0', 10) || 0;
         const frq = parseInt(fields[colIndex['frq']] || '0', 10) || 0;
         const exchange = (fields[colIndex['exchange']] || '').trim();
@@ -168,13 +207,19 @@ async function run() {
         
         if (!hasTag && !isCommon) continue;
         
-        // Truncate translation to keep size manageable (first 3 meanings)
-        const shortTranslation = translation.split('\n').slice(0, 3).join('; ').substring(0, 200);
+        // ECDICT 的多个义项用字面量 "\n"（两个字符）分隔，这里转成 "；" 便于展示
+        const shortTranslation = translation
+          .split(/\\n|\n/)
+          .map(s => s.trim())
+          .filter(Boolean)
+          .slice(0, 3)
+          .join('; ')
+          .substring(0, 200);
         
         // Store dictionary entry
         if (!dict[word] || (hasTag && !dict[word].tag)) {
           dict[word] = {
-            p: phonetic,
+            p: normalizePhonetic(phonetic),
             t: shortTranslation,
             tag: tag,
             frq: frq || bnc,
@@ -187,9 +232,20 @@ async function run() {
           for (const part of parts) {
             const [type, forms] = part.split(':');
             if (!forms) continue;
-            const formList = forms.split(',');
-            for (const form of formList) {
-              const f = form.trim().toLowerCase();
+            const formList = forms.split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+
+            // 类型 0 表示"当前词条的原形"（如 looking 的 exchange 是 0:look），
+            // 方向要反过来，否则会生成 look -> looking 这种反过来的映射。
+            if (type === '0') {
+              const base = formList[0];
+              if (base && base !== word && !lemmaMap[word]) {
+                lemmaMap[word] = base;
+                lemmaCount++;
+              }
+              continue;
+            }
+
+            for (const f of formList) {
               if (f && f !== word && !lemmaMap[f]) {
                 lemmaMap[f] = word;
                 lemmaCount++;
