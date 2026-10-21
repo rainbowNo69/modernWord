@@ -13,6 +13,16 @@
 ## 目录结构
 
 ```
+├── functions/              # Cloudflare Pages Functions（线上后端，与 server/ 对应）
+│   └── api/
+│       ├── shows.ts        # /api/shows
+│       ├── episodes.ts     # /api/episodes
+│       ├── transcript.ts   # /api/transcript
+│       ├── health.ts       # /api/health
+│       └── maimemo/notepads/[[id]].ts  # /api/maimemo/notepads[/:id]
+├── lib/upstream.ts         # Pages Functions 共用的抓取/解析（fetch + Cache API）
+├── wrangler.toml           # Cloudflare Pages 配置（pages_build_output_dir = dist）
+├── scripts/cf-build.mjs    # Pages 构建：vite build + 拷贝 data/*.json
 ├── server/
 │   ├── cache.ts           # 进程内有界 TTL 缓存（内存，不落盘）
 │   ├── routes/
@@ -104,6 +114,7 @@ pnpm run lint
 ## 注意事项
 
 - 后端不存储用户 token，所有敏感信息仅在浏览器端
+- **部署在 Cloudflare Pages**：`functions/` 是线上后端，`server/` 是本地开发后端，两者接口一致但实现不同（Express + 内存缓存 vs Pages Functions + Cache API）。改抓取/解析逻辑请同步两边，`lib/upstream.ts` 只被 Functions 使用
 - 剧本/剧集目录**不落服务端磁盘**：原来写在 `data/cache/` 的 JSON 已删除（目录已加入 `.gitignore`），改为 `server/cache.ts` 的有界内存缓存 + 响应头 `Cache-Control`
 - 词典数据为内置精简版，覆盖四六级到 GRE 核心词汇
 - 欧路 API 支持浏览器直连（预检返回 `Access-Control-Allow-Origin: *` 与 `Access-Control-Allow-Headers: authorization`）

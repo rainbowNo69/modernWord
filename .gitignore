@@ -17,6 +17,9 @@ __pycache__/
 # 剧本/剧集索引的服务端缓存（已改为进程内内存缓存，不再落盘）
 data/cache/
 
+# Cloudflare wrangler 本地状态
+.wrangler/
+
 # JS/TS bundlers & build outputs
 .next
 .nuxt

@@ -29,5 +29,7 @@ export default defineConfig([
     'dist-server/**',
     'node_modules/**',
     'scripts/**',
+    // wrangler 本地模拟时生成的打包产物
+    '.wrangler/**',
   ]),
 ]);

@@ -50,6 +50,9 @@ pnpm start
 | `pnpm debug:watch` | 同上，额外带 `--watch` 文件监听热重启，配合 IDE「附加到 9229」使用 |
 | `pnpm build` / `pnpm build:win` | 构建前端 `dist/` + 后端 `dist-server/` |
 | `pnpm start` / `pnpm start:win` | 以生产模式启动构建产物（Express 静态服务 + API） |
+| `pnpm cf:build` | Cloudflare Pages 构建：`vite build` + 拷贝 `data/*.json` 到 `dist/data/` |
+| `pnpm cf:dev` | 本地用 `wrangler pages dev dist` 模拟 Pages 环境（含 Functions） |
+| `pnpm cf:deploy` | 用 wrangler 部署到 Cloudflare Pages（不上传 Git，直接传产物） |
 | `pnpm ts-check` | TypeScript 类型检查（`tsc --noEmit`） |
 | `pnpm lint` / `pnpm lint:build` | ESLint 全量检查 / 只报错误（`--quiet`） |
 | `pnpm lint:style` | stylelint 检查 `src/**/*.css` |
@@ -91,6 +94,42 @@ pnpm start
 4. 触发请求命中断点：浏览器打开 `http://localhost:5000/`，或直接访问 `http://localhost:5000/api/transcript?season=1&episode=1`
 
 配置位于 `.vscode/launch.json`（已在 `.gitignore` 中放行，可随仓库共享）。不想用 IDE 时，也可用 `edge://inspect` / `chrome://inspect` 连接 9229 端口调试。
+
+## 部署到 Cloudflare Pages（免费）
+
+线上是 **Pages 静态前端 + Pages Functions 后端**：`functions/api/**` 提供与本地 Express 完全相同的接口，`lib/upstream.ts` 是两边共用的抓取/解析逻辑。`wrangler.toml` 已声明 `pages_build_output_dir = "dist"`。
+
+**方式一：Git 集成（推荐，push 自动部署）**
+
+1. Cloudflare Dashboard → Workers & Pages → Create → Pages → Connect to Git，选择本仓库
+2. 构建配置：
+   - Framework preset：`None`（或 `Vite`，只要下面两项对就行）
+   - Build command：`pnpm cf:build`
+   - Build output directory：`dist`
+   - 环境变量（可选）：`NODE_VERSION=20`
+3. Save and Deploy → 得到 `https://<project>.pages.dev`（自定义域名免费，在 Custom domains 里加）
+4. 之后每次 push 到 main 自动构建部署，其他分支/PR 会生成独立预览 URL
+5. 首次部署后检查一次 `/api/shows?q=friends`：若返回 502，说明上游对 Cloudflare 出口 IP 做了风控（见下方"已知限制"）
+
+**方式二：wrangler 命令行**
+
+```bash
+npx wrangler login                      # 浏览器授权
+npx wrangler pages project create modern-word   # 首次建项目
+pnpm cf:build                           # 产出 dist/（含 data/*.json）
+pnpm cf:deploy                          # 上传 dist/ 与 functions/
+pnpm cf:dev                             # 本地用 workerd 模拟 Pages 环境（http://127.0.0.1:8788）
+```
+
+**构建产物说明**：`scripts/cf-build.mjs` = `vite build` + 把 `data/dict.json`、`data/lemma.json` 拷进 `dist/data/`。Pages 没有 Express 的静态目录，词典必须作为静态资源一起上传，否则前端加载词典会 404。
+
+**两套后端需要同步**：`server/` 给本地开发用（Express + tsx + 内存缓存），`functions/` 给线上用（Pages Functions + Cache API）。改抓取/解析逻辑时优先改 `lib/upstream.ts`，Express 版再从那里引用，避免两边行为漂移。
+
+**已知限制**：
+
+- Workers/Pages Functions 免费额度：10 万请求/天、单请求 CPU 10ms（本项目只做抓取+正则，够用）
+- 没有 Node 运行时，不能用 `fs` / `https` / `express`；缓存用 Cache API（按数据中心，24h）代替内存 LRU
+- 上游若返回 403 风控页，`/api/shows`、`/api/episodes`、`/api/transcript` 会返回 502 并带错误信息，此时需要换出口或加代理
 
 ## 项目结构
 

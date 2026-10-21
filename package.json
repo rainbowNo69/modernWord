@@ -13,6 +13,9 @@
     "lint:build": "eslint . --quiet",
     "lint:style": "stylelint \"src/**/*.css\"",
     "start": "bash ./scripts/start.sh",
+    "cf:build": "node scripts/cf-build.mjs",
+    "cf:dev": "wrangler pages dev dist",
+    "cf:deploy": "wrangler pages deploy dist",
     "ts-check": "tsc -p tsconfig.json",
     "validate": "pnpm dlx concurrently --group --names lint-tsc,lint-build,lint-style \"pnpm ts-check\" \"pnpm lint:build\" \"pnpm lint:style\"",
     "build:win": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/build.ps1",
@@ -47,7 +50,8 @@
     "tsx": "^4.19.2",
     "typescript": "^5.6.0",
     "typescript-eslint": "^8",
-    "vite": "^6.4.4"
+    "vite": "^6.4.4",
+    "wrangler": "^4.151.3"
   },
   "packageManager": "pnpm@9.0.0",
   "engines": {
