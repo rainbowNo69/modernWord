@@ -116,8 +116,7 @@ pnpm start
 ```bash
 npx wrangler login                      # 浏览器授权
 npx wrangler pages project create modern-word   # 首次建项目
-pnpm cf:build                           # 产出 dist/（含 data/*.json）
-pnpm cf:deploy                          # 上传 dist/ 与 functions/
+pnpm cf:deploy                          # 构建 dist/ 并上传静态资源与 functions/
 pnpm cf:dev                             # 本地用 workerd 模拟 Pages 环境（http://127.0.0.1:8788）
 ```
 

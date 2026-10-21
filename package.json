@@ -15,7 +15,7 @@
     "start": "bash ./scripts/start.sh",
     "cf:build": "node scripts/cf-build.mjs",
     "cf:dev": "wrangler pages dev dist",
-    "cf:deploy": "wrangler pages deploy dist",
+    "cf:deploy": "pnpm cf:build && wrangler pages deploy dist --project-name modern-word --branch main",
     "ts-check": "tsc -p tsconfig.json",
     "validate": "pnpm dlx concurrently --group --names lint-tsc,lint-build,lint-style \"pnpm ts-check\" \"pnpm lint:build\" \"pnpm lint:style\"",
     "build:win": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/build.ps1",
