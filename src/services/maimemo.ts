@@ -1,16 +1,47 @@
 import type { MaimemoNotepad, PushResult } from '../types';
 
-// 走同源后端代理：墨墨 API 不支持浏览器跨域（预检不返回 CORS 头），
-// 由 server/routes/maimemo.ts 转发到 https://open.maimemo.com/open/api/v1
-const MAIMEMO_BASE = '/api/maimemo';
+// 开放平台直连地址：浏览器直接调用（与 devtools 里抓到的请求一致）
+const MAIMEMO_DIRECT_BASE = 'https://open.maimemo.com/open/api/v1';
+// 同源后端代理：浏览器跨域被拦截（CORS 预检失败）时回退使用，
+// 由 server/routes/maimemo.ts 转发到上面的直连地址
+const MAIMEMO_PROXY_BASE = '/api/maimemo';
 
-function getHeaders(token: string): Record<string, string> {
+// 直连时的请求头：墨墨只认 Authorization，Accept-Language 与业务无关但保持一致
+function getDirectHeaders(token: string): Record<string, string> {
   return {
-    // token 通过自定义头传给后端，后端转成 Authorization: Bearer 转发，不落盘
+    'accept': 'application/json',
+    'accept-language': 'zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6',
+    'authorization': `Bearer ${token}`,
+  };
+}
+
+// 走代理时的请求头：token 放在自定义头里，由后端转成 Authorization 转发，不落盘
+function getProxyHeaders(token: string): Record<string, string> {
+  return {
     'X-Maimemo-Token': token,
     'Accept': 'application/json',
     'Content-Type': 'application/json',
   };
+}
+
+// 墨墨开放平台把业务数据包在 data 里：{ data: { notepads: [...] } }，
+// 兼容一下平台偶尔直接返回 { notepads: [...] } 的情况
+interface NotepadsResponse {
+  notepads?: MaimemoNotepad[];
+  data?: { notepads?: MaimemoNotepad[] };
+}
+
+interface NotepadResponse {
+  notepad?: MaimemoNotepad;
+  data?: { notepad?: MaimemoNotepad };
+}
+
+function unwrapNotepads(json: NotepadsResponse): MaimemoNotepad[] {
+  return json.data?.notepads ?? json.notepads ?? [];
+}
+
+function unwrapNotepad(json: NotepadResponse): MaimemoNotepad | null {
+  return json.data?.notepad ?? json.notepad ?? null;
 }
 
 // Rate limiting: 10s/20, 60s/40, 5h/2000
@@ -38,10 +69,32 @@ async function rateLimitedFetch(url: string, options: RequestInit): Promise<Resp
   return fetch(url, options);
 }
 
-// Test connection and list notepads
-export async function testMaimemoConnection(token: string): Promise<MaimemoNotepad[]> {
-  const res = await rateLimitedFetch(`${MAIMEMO_BASE}/notepads?limit=100&offset=0`, {
-    headers: getHeaders(token),
+// 直连开放平台获取云词本列表，limit 上限为 10
+async function listNotepadsDirect(token: string): Promise<MaimemoNotepad[]> {  const res = await rateLimitedFetch(
+    `${MAIMEMO_DIRECT_BASE}/memo/notepads?limit=10&offset=0`,
+    {
+      method: 'GET',
+      headers: getDirectHeaders(token),
+    }
+  );
+
+  if (res.status === 401) {
+    throw new Error('Token 无效，请检查墨墨 API 授权');
+  }
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`墨墨 API 错误 (${res.status}): ${text}`);
+  }
+
+  const json = (await res.json()) as NotepadsResponse;
+  return unwrapNotepads(json);
+}
+
+// 经同源后端代理获取（直连被 CORS 拦截时使用）
+async function listNotepadsViaProxy(token: string): Promise<MaimemoNotepad[]> {
+  const res = await rateLimitedFetch(`${MAIMEMO_PROXY_BASE}/notepads?limit=10&offset=0`, {
+    headers: getProxyHeaders(token),
   });
 
   if (res.status === 401) {
@@ -53,8 +106,20 @@ export async function testMaimemoConnection(token: string): Promise<MaimemoNotep
     throw new Error(`墨墨 API 错误 (${res.status}): ${text}`);
   }
 
-  const json = await res.json();
-  return (json.notepads || []) as MaimemoNotepad[];
+  const json = (await res.json()) as NotepadsResponse;
+  return unwrapNotepads(json);
+}
+
+// Test connection and list notepads
+export async function testMaimemoConnection(token: string): Promise<MaimemoNotepad[]> {
+  try {
+    return await listNotepadsDirect(token);
+  } catch (err) {
+    // 浏览器端跨域失败（CORS 预检被拦）时 fetch 抛 TypeError，此时回退到后端代理
+    if (!(err instanceof TypeError)) throw err;
+    console.warn('[maimemo] 直连被浏览器拦截，改用后端代理:', err.message);
+    return await listNotepadsViaProxy(token);
+  }
 }
 
 // Create a new notepad
@@ -65,16 +130,16 @@ export async function createNotepad(
 ): Promise<string> {
   const content = words.join('\n');
   
-  const res = await rateLimitedFetch(`${MAIMEMO_BASE}/notepads`, {
+  const res = await rateLimitedFetch(`${MAIMEMO_PROXY_BASE}/notepads`, {
     method: 'POST',
-    headers: getHeaders(token),
+    headers: getProxyHeaders(token),
     body: JSON.stringify({
       notepad: {
         status: 'PUBLISHED',
         content,
         title,
-        brief: `摩登家庭生词 - ${words.length} 个单词`,
-        tags: ['摩登家庭'],
+        brief: `美剧生词 - ${words.length} 个单词`,
+        tags: ['美剧生词'],
       },
     }),
   });
@@ -84,14 +149,14 @@ export async function createNotepad(
     throw new Error(`创建云词本失败: ${text}`);
   }
 
-  const json = await res.json();
-  return json.notepad?.id || json.id || '';
+  const json = (await res.json()) as NotepadResponse;
+  return unwrapNotepad(json)?.id ?? '';
 }
 
 // Get notepad content
 export async function getNotepad(token: string, notepadId: string): Promise<MaimemoNotepad> {
-  const res = await rateLimitedFetch(`${MAIMEMO_BASE}/notepads/${notepadId}`, {
-    headers: getHeaders(token),
+  const res = await rateLimitedFetch(`${MAIMEMO_PROXY_BASE}/notepads/${notepadId}`, {
+    headers: getProxyHeaders(token),
   });
 
   if (!res.ok) {
@@ -99,8 +164,12 @@ export async function getNotepad(token: string, notepadId: string): Promise<Maim
     throw new Error(`获取云词本失败: ${text}`);
   }
 
-  const json = await res.json();
-  return json.notepad || json;
+  const json = (await res.json()) as NotepadResponse;
+  const notepad = unwrapNotepad(json);
+  if (!notepad) {
+    throw new Error('获取云词本失败：返回内容为空');
+  }
+  return notepad;
 }
 
 // Update notepad (append or overwrite words)
@@ -128,16 +197,16 @@ export async function updateNotepad(
     // Get existing notepad to preserve metadata
     const existing = await getNotepad(token, notepadId);
     
-    const res = await rateLimitedFetch(`${MAIMEMO_BASE}/notepads/${notepadId}`, {
+    const res = await rateLimitedFetch(`${MAIMEMO_PROXY_BASE}/notepads/${notepadId}`, {
       method: 'POST',
-      headers: getHeaders(token),
+      headers: getProxyHeaders(token),
       body: JSON.stringify({
         notepad: {
           status: existing.status || 'PUBLISHED',
           content: finalWords.join('\n'),
           title: existing.title,
-          brief: existing.brief || `摩登家庭生词 - ${finalWords.length} 个单词`,
-          tags: existing.tags || ['摩登家庭'],
+          brief: existing.brief || `美剧生词 - ${finalWords.length} 个单词`,
+          tags: existing.tags || ['美剧生词'],
         },
       }),
     });

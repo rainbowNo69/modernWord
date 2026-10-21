@@ -62,7 +62,21 @@ pnpm start
 - 单集剧本响应带 `Cache-Control: public, max-age=86400`，重复查看由浏览器缓存兜底，不会重复回源
 - 用户 token、最近选择的剧集等只存在浏览器 localStorage
 
-- **5000**：Express HTTP 服务，同时承载前端页面、`/api/*` 与 `/data/*` 静态词典。
+### 页面与路由
+
+零依赖 hash 路由（`src/hooks/useHashRoute.ts`），URL 可刷新、可分享：
+
+| 路由 | 页面 | 说明 |
+| --- | --- | --- |
+| `#/` | 采集页 | 当前剧 + 季/集/难度 → 生成生词表 → 勾选推送 |
+| `#/shows` | 选剧页 | 搜索任意美剧，或点推荐海报《老友记》《摩登家庭》直接选 |
+| `#/settings` | 设置页 | 配置欧路 / 墨墨 Token 与目标生词本（不常用，入口在顶栏左上角齿轮） |
+
+推荐海报图片放在 `public/posters/`（`friends.jpg`、`modern-family.jpg`，建议 2:3）。**图片缺失时自动回退为渐变占位卡**，不影响功能；配色与路径在 `src/constants.ts` 的 `RECOMMENDED_SHOWS` 中改。
+
+### 端口说明
+
+- **5000**：Express HTTP 服务，同时承载前端页面、`/api/*` 与 `/data/*` 静态词典，Vite HMR 的 WebSocket 也复用该端口。
 - **24678**：Vite 在 middleware 模式下 HMR WebSocket 的默认端口。本项目 `server/vite.ts` 本地开发时通过 `hmr: { server: httpServer }` 把 HMR 挂到 Express 的 http server 上，因此**不再单独监听 24678**（`/@vite/client` 也不会再注入该端口），多实例并存不会互相抢端口；`pnpm kill:port` 保留对它的清理，用于回收旧代码启动的残留进程。
   - 常见报错 `WebSocket server error: Port 24678 is already in use`：旧实例已占用该端口，新实例 HTTP 正常但 HMR 失效，`pnpm kill:port` 后重启即可。
 - **6000**：仅在部署平台（`COZE_PROJECT_TYPE` / `COZE_EVAL` 存在）时使用，Vite 按 `vite.config.ts` 里的 `hmr.port` 自建 HMR 服务并由网关代理，本地不受影响。

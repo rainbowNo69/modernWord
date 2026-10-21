@@ -47,10 +47,11 @@ export interface EudicCategory {
 export interface MaimemoNotepad {
   id: string;
   title: string;
-  brief: string;
-  content: string;
-  status: string;
-  tags: string[];
+  // 列表接口不返回 content/brief 等字段，仅详情接口返回，故设为可选
+  brief?: string;
+  content?: string;
+  status?: string;
+  tags?: string[];
 }
 
 // Difficulty levels
@@ -78,6 +79,5 @@ export const LS_KEYS = {
   EUDIC_CATEGORY: 'mvcc.eudicCategory',
   MAIMEMO_NOTEPAD: 'mvcc.maimemoNotepad',
   DIFFICULTY: 'mvcc.difficulty',
-  EUDIC_WITH_CONTEXT: 'mvcc.eudicWithContext',
   MAIMEMO_MODE: 'mvcc.maimemoMode', // 'append' | 'overwrite'
 } as const;

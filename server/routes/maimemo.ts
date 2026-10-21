@@ -12,9 +12,10 @@ const router = Router();
 /**
  * 把请求转发到墨墨开放平台。
  *
- * 为什么不从浏览器直连：open.maimemo.com 对 OPTIONS 预检不返回任何
+ * 为什么还需要代理：open.maimemo.com 对 OPTIONS 预检不返回任何
  * Access-Control-* 头，带 Authorization / Content-Type: application/json 的
- * 跨域请求必然预检失败，真实请求根本发不出去。改由同源后端转发即可绕开预检。
+ * 跨域请求大概率预检失败。前端会先尝试直连，失败（fetch 抛 TypeError）后
+ * 回退到这里的同源转发，保证功能可用。
  */
 async function proxyToMaimemo(req: Request, res: Response, upstreamPath: string): Promise<void> {
   const token = (req.header('X-Maimemo-Token') || '').trim();

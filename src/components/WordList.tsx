@@ -102,8 +102,8 @@ export default function WordList({ words, selectedWords, onSelectionChange }: Wo
         <svg className="w-16 h-16 mx-auto mb-4 text-stone-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
         </svg>
-        <p className="text-lg font-medium">选择一集开始生成生词表</p>
-        <p className="text-sm mt-1">先搜索并选择美剧，再选季、集，点击"生成生词表"</p>
+        <p className="text-lg font-semibold text-stone-900">还没有生词</p>
+        <p className="text-sm mt-1">先选一部美剧，再选季和集，点击"生成生词表"</p>
         <p className="text-xs mt-1 text-stone-400">生成后默认不勾选，由你挑选要推送的单词</p>
       </div>
     );
@@ -122,7 +122,7 @@ export default function WordList({ words, selectedWords, onSelectionChange }: Wo
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="搜索单词或释义..."
-            className="w-full pl-10 pr-3 py-2 border border-stone-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+            className="w-full pl-10 pr-3 py-2.5 rounded-xl border border-stone-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
           />
         </div>
 
@@ -171,11 +171,11 @@ export default function WordList({ words, selectedWords, onSelectionChange }: Wo
       )}
 
       {/* Word List */}
-      <div className="space-y-2 max-h-[calc(100vh-420px)] overflow-y-auto scrollbar-thin pr-1">
+      <div className="space-y-2 max-h-[58vh] overflow-y-auto scrollbar-thin pr-1">
         {filteredWords.map(word => (
           <div
             key={word.word}
-            className={`flex items-start gap-3 p-3 rounded-lg border transition-all cursor-pointer hover:shadow-sm ${
+            className={`flex items-start gap-3 p-3.5 rounded-xl border transition-all cursor-pointer hover:shadow-sm ${
               selectedWords.has(word.word)
                 ? 'border-teal-200 bg-teal-50/50'
                 : 'border-stone-100 bg-white hover:border-stone-200'

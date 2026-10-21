@@ -4,22 +4,25 @@ import EpisodeSelector from './components/EpisodeSelector';
 import WordList from './components/WordList';
 import BottomBar from './components/BottomBar';
 import ResultDialog from './components/ResultDialog';
+import ShowsPage from './pages/ShowsPage';
 import { useLocalStorage } from './hooks/useLocalStorage';
+import { useHashRoute } from './hooks/useHashRoute';
 import { loadDictionary, processTranscript } from './services/dict';
 import { fetchTranscript } from './services/api';
 import { addWordsToEudic } from './services/eudic';
 import { updateNotepad } from './services/maimemo';
 import { LS_KEYS } from './types';
-import type { VocabWord, DifficultyLevel, PushResult } from './types';
+import type { Show, VocabWord, DifficultyLevel, PushResult } from './types';
 
 export default function App() {
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const { route, navigate } = useHashRoute();
+
+  const [show, setShow] = useLocalStorage<Show | null>(LS_KEYS.SHOW, null);
   const [difficulty, setDifficulty] = useLocalStorage<DifficultyLevel>(LS_KEYS.DIFFICULTY, 'cet4');
   const [eudicToken] = useLocalStorage(LS_KEYS.EUDIC_TOKEN, '');
   const [maimemoToken] = useLocalStorage(LS_KEYS.MAIMEMO_TOKEN, '');
   const [eudicCategory] = useLocalStorage(LS_KEYS.EUDIC_CATEGORY, '');
   const [maimemoNotepad] = useLocalStorage(LS_KEYS.MAIMEMO_NOTEPAD, '');
-  const [eudicWithContext] = useLocalStorage(LS_KEYS.EUDIC_WITH_CONTEXT, false);
   const [maimemoMode] = useLocalStorage<'append' | 'overwrite'>(LS_KEYS.MAIMEMO_MODE, 'append');
 
   const [words, setWords] = useState<VocabWord[]>([]);
@@ -45,7 +48,17 @@ export default function App() {
       });
   }, []);
 
-  const handleGenerate = useCallback(async (show: string, season: number, episode: number) => {
+  const handleSelectShow = useCallback((next: Show) => {
+    setShow(next);
+    setWords([]);
+    setSelectedWords(new Set());
+    setError('');
+    navigate('home');
+  }, [setShow, navigate]);
+
+  const handleGenerate = useCallback(async (season: number, episode: number) => {
+    if (!show) return;
+
     setError('');
     setIsLoading(true);
 
@@ -55,7 +68,7 @@ export default function App() {
         setDictLoaded(true);
       }
 
-      const lines = await fetchTranscript(show, season, episode);
+      const lines = await fetchTranscript(show.id, season, episode);
       const vocabWords = processTranscript(lines, difficulty);
       setWords(vocabWords);
 
@@ -68,14 +81,11 @@ export default function App() {
     } finally {
       setIsLoading(false);
     }
-  }, [dictLoaded, difficulty]);
+  }, [dictLoaded, difficulty, show]);
 
   // Re-filter when difficulty changes
   const handleDifficultyChange = useCallback((level: DifficultyLevel) => {
     setDifficulty(level);
-    // If we have transcript data, re-process would need the lines.
-    // For simplicity, we'll just update the difficulty and user needs to regenerate.
-    // But we can also store the last transcript and re-process.
   }, [setDifficulty]);
 
   const handlePushEudic = useCallback(async () => {
@@ -101,7 +111,7 @@ export default function App() {
     setIsPushing(true);
     try {
       const wordList = wordsToPush.map(w => w.word);
-      const result = await addWordsToEudic(eudicToken, eudicCategory, wordList, eudicWithContext);
+      const result = await addWordsToEudic(eudicToken, eudicCategory, wordList);
 
       // Mark added words
       if (result.success > 0) {
@@ -125,7 +135,7 @@ export default function App() {
     } finally {
       setIsPushing(false);
     }
-  }, [eudicToken, eudicCategory, words, selectedWords, eudicWithContext]);
+  }, [eudicToken, eudicCategory, words, selectedWords]);
 
   const handlePushMaimemo = useCallback(async () => {
     if (!maimemoToken || !maimemoNotepad) {
@@ -176,75 +186,125 @@ export default function App() {
   }, [maimemoToken, maimemoNotepad, words, selectedWords, maimemoMode]);
 
   return (
-    <div className="min-h-screen bg-stone-50 pb-20">
+    <div className="min-h-screen bg-stone-50 pb-24">
       {/* Header */}
-      <header className="bg-white border-b border-stone-200 sticky top-0 z-30">
-        <div className="max-w-4xl mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-xl font-bold text-stone-900 flex items-center gap-2">
-                <svg className="w-6 h-6 text-teal-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-                </svg>
+      <header className="bg-white/85 backdrop-blur border-b border-stone-200/80 sticky top-0 z-30">
+        <div className="max-w-5xl mx-auto px-4 py-3 flex items-center gap-3">
+          <button
+            onClick={() => navigate('settings')}
+            aria-label="设置"
+            title="设置"
+            className={`w-10 h-10 rounded-full inline-flex items-center justify-center border transition-colors ${
+              route === 'settings'
+                ? 'bg-stone-900 text-white border-stone-900'
+                : 'border-stone-200 text-stone-500 hover:text-stone-900 hover:bg-stone-100'
+            }`}
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+          </button>
+
+          <button
+            onClick={() => navigate('home')}
+            className="flex items-center gap-2.5 text-left"
+          >
+            <span className="w-9 h-9 rounded-xl bg-teal-700 text-white inline-flex items-center justify-center">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+              </svg>
+            </span>
+            <span>
+              <span className="block text-base font-semibold tracking-tight text-stone-900 leading-tight">
                 美剧生词采集器
-              </h1>
-              <p className="text-sm text-stone-500 mt-0.5">
-                搜索任意美剧，从剧本中智能识别生词，一键推送到欧路词典 / 墨墨背单词
-              </p>
-            </div>
-          </div>
+              </span>
+              <span className="block text-xs text-stone-400 leading-tight">看剧学词，一键进生词本</span>
+            </span>
+          </button>
+
+          {route === 'home' && (
+            <button
+              onClick={() => navigate('shows')}
+              className="ml-auto text-sm text-stone-500 hover:text-stone-900 transition-colors"
+            >
+              选剧
+            </button>
+          )}
         </div>
       </header>
 
-      {/* Main Content */}
-      <main className="max-w-4xl mx-auto px-4 py-6 space-y-6">
-        {/* Settings Panel */}
-        <Settings isOpen={settingsOpen} onToggle={() => setSettingsOpen(!settingsOpen)} />
+      {route === 'shows' && (
+        <ShowsPage
+          currentShow={show}
+          onSelect={handleSelectShow}
+          onBack={() => navigate('home')}
+        />
+      )}
 
-        {/* Dictionary Loading Status */}
-        {dictError && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-            <p className="text-sm text-red-700">{dictError}</p>
-            <p className="text-xs text-red-500 mt-1">请确保已运行词典数据处理脚本</p>
-          </div>
-        )}
+      {route === 'settings' && (
+        <Settings onBack={() => navigate('home')} />
+      )}
 
-        {/* Episode Selector */}
-        <div className="bg-white rounded-lg border border-stone-200 p-4">
-          <EpisodeSelector
-            onGenerate={handleGenerate}
-            difficulty={difficulty}
-            onDifficultyChange={handleDifficultyChange}
-            isLoading={isLoading}
-          />
-        </div>
+      {route === 'home' && (
+        <main className="max-w-5xl mx-auto px-4 py-8 space-y-5">
+          {dictError && (
+            <div className="bg-red-50 border border-red-200 rounded-2xl p-4">
+              <p className="text-sm text-red-700">{dictError}</p>
+              <p className="text-xs text-red-500 mt-1">请确保已运行词典数据处理脚本</p>
+            </div>
+          )}
 
-        {/* Error Message */}
-        {error && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-            <p className="text-sm text-red-700">{error}</p>
-          </div>
-        )}
+          {!show && (
+            <section className="rounded-2xl border border-stone-200 bg-white shadow-sm p-8 text-center">
+              <p className="text-lg font-semibold text-stone-900">先挑一部美剧</p>
+              <p className="text-sm text-stone-500 mt-1">支持任意美剧剧本，选好后再挑季和集</p>
+              <button
+                onClick={() => navigate('shows')}
+                className="mt-5 px-5 py-2.5 rounded-xl bg-teal-700 text-white text-sm font-medium shadow-sm hover:bg-teal-800 transition-colors"
+              >
+                去选剧
+              </button>
+            </section>
+          )}
 
-        {/* Word List */}
-        <div className="bg-white rounded-lg border border-stone-200 p-4">
-          <WordList
-            words={words}
-            selectedWords={selectedWords}
-            onSelectionChange={setSelectedWords}
-          />
-        </div>
-      </main>
+          <section className="rounded-2xl border border-stone-200 bg-white shadow-sm p-5">
+            <EpisodeSelector
+              show={show}
+              onPickShow={() => navigate('shows')}
+              onGenerate={(season, episode) => void handleGenerate(season, episode)}
+              difficulty={difficulty}
+              onDifficultyChange={handleDifficultyChange}
+              isLoading={isLoading}
+            />
+          </section>
 
-      {/* Bottom Action Bar */}
-      <BottomBar
-        selectedCount={selectedWords.size}
-        onPushEudic={handlePushEudic}
-        onPushMaimemo={handlePushMaimemo}
-        isPushing={isPushing}
-        hasEudicToken={!!eudicToken}
-        hasMaimemoToken={!!maimemoToken}
-      />
+          {error && (
+            <div className="bg-red-50 border border-red-200 rounded-2xl p-4">
+              <p className="text-sm text-red-700">{error}</p>
+            </div>
+          )}
+
+          <section className="rounded-2xl border border-stone-200 bg-white shadow-sm p-5">
+            <WordList
+              words={words}
+              selectedWords={selectedWords}
+              onSelectionChange={setSelectedWords}
+            />
+          </section>
+        </main>
+      )}
+
+      {route === 'home' && (
+        <BottomBar
+          selectedCount={selectedWords.size}
+          onPushEudic={() => void handlePushEudic()}
+          onPushMaimemo={() => void handlePushMaimemo()}
+          isPushing={isPushing}
+          hasEudicToken={!!eudicToken}
+          hasMaimemoToken={!!maimemoToken}
+        />
+      )}
 
       {/* Result Dialog */}
       <ResultDialog

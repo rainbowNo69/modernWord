@@ -21,13 +21,16 @@
 │   ├── server.ts           # Express 服务入口
 │   └── vite.ts             # Vite 中间件集成
 ├── src/
-│   ├── App.tsx             # 主应用组件
+│   ├── App.tsx             # 主应用组件（hash 路由分发 + 全局状态）
+│   ├── constants.ts        # 推荐剧集（海报路径、配色）
 │   ├── main.tsx            # React 入口
 │   ├── index.css           # 全局样式 (Tailwind)
 │   ├── types.ts            # TypeScript 类型定义
+│   ├── pages/
+│   │   └── ShowsPage.tsx   # 选剧页（搜索 + 推荐海报）
 │   ├── components/
-│   │   ├── Settings.tsx    # 设置面板 (欧路/墨墨 token 配置)
-│   │   ├── EpisodeSelector.tsx  # 季/集选择器
+│   │   ├── Settings.tsx    # 设置页 (欧路/墨墨 token 配置)
+│   │   ├── EpisodeSelector.tsx  # 当前剧 + 季/集/难度选择
 │   │   ├── WordList.tsx    # 生词列表 (搜索/筛选/勾选)
 │   │   ├── BottomBar.tsx   # 底部操作栏 (推送到欧路/墨墨)
 │   │   └── ResultDialog.tsx # 推送结果弹窗
@@ -37,11 +40,13 @@
 │   │   ├── eudic.ts        # 欧路词典 API 对接
 │   │   └── maimemo.ts      # 墨墨背单词 API 对接
 │   └── hooks/
-│       └── useLocalStorage.ts  # localStorage Hook
+│       ├── useLocalStorage.ts  # localStorage Hook
+│       └── useHashRoute.ts     # 零依赖 hash 路由 (#/shows、#/settings)
+├── public/
+│   └── posters/            # 推荐剧集海报（自行补图，缺失走渐变占位）
 ├── data/
 │   ├── dict.json           # 精简英汉词典 (~40KB)
-│   ├── lemma.json          # 词形还原映射 (~109KB)
-│   └── cache/              # 剧本缓存目录
+│   └── lemma.json          # 词形还原映射 (~109KB)
 ├── scripts/
 │   ├── generate-dict.mjs   # 词典数据生成脚本
 │   ├── build.sh            # 构建脚本
@@ -93,7 +98,7 @@ pnpm run lint
 2. **剧本抓取**: 季/集目录与单集剧本均从站点实时扒取；缓存只放在进程内存（有界 LRU + TTL）和浏览器 HTTP 缓存，**不写服务端磁盘**
 3. **生词识别**: 基于 ECDICT 词典数据，支持词形还原、难度分档（高考/四六级/考研雅思）；生成后默认不勾选，由用户自选
 4. **欧路词典对接**: 前端直连 API，支持列生词本、批量加词
-5. **墨墨背单词对接**: 经 `/api/maimemo/*` 后端代理，支持列云词本、新建/追加/覆盖写入
+5. **墨墨背单词对接**: 获取云词本列表走**前端直连** `https://open.maimemo.com/open/api/v1/memo/notepads`（`Authorization: Bearer`，limit ≤ 10）；被浏览器 CORS 拦截（fetch 抛 `TypeError`）时自动回退 `/api/maimemo/*` 同源代理；新建/更新云词本仍走代理
 6. **本地存储**: 所有 token、上一次选择的剧集和偏好设置仅存于浏览器 localStorage
 
 ## 注意事项
@@ -102,5 +107,6 @@ pnpm run lint
 - 剧本/剧集目录**不落服务端磁盘**：原来写在 `data/cache/` 的 JSON 已删除（目录已加入 `.gitignore`），改为 `server/cache.ts` 的有界内存缓存 + 响应头 `Cache-Control`
 - 词典数据为内置精简版，覆盖四六级到 GRE 核心词汇
 - 欧路 API 支持浏览器直连（预检返回 `Access-Control-Allow-Origin: *` 与 `Access-Control-Allow-Headers: authorization`）
-- 墨墨 API **不支持**浏览器直连：对 OPTIONS 预检不返回任何 `Access-Control-*` 头，带 `Authorization` 的请求预检失败、真实请求发不出去；必须走 `/api/maimemo/*` 代理
-- 墨墨 token 由前端放在 `X-Maimemo-Token` 头里，后端转成 `Authorization: Bearer <token>` 转发，仅在内存中传递、不落盘
+- 墨墨开放平台的 CORS 支持不稳定：实测（2026-10）其 OPTIONS 预检返回 204 但**不带任何 `Access-Control-*` 头**，401/GET 响应同样没有 `Access-Control-Allow-Origin`，因此带 `Authorization` 的直连在浏览器里通常会在预检阶段失败
+  - 代码里的处理：先直连，捕获 `TypeError` 后回退 `/api/maimemo/*` 代理；若哪天平台放开 CORS，直连即自动生效，无需改代码
+- 墨墨 token 走代理时由前端放在 `X-Maimemo-Token` 头里，后端转成 `Authorization: Bearer <token>` 转发，仅在内存中传递、不落盘
