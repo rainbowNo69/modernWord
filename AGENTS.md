@@ -1,8 +1,8 @@
-# 摩登家庭生词采集器 (Modern Family Vocab Collector)
+# 美剧生词采集器 (TV Show Vocab Collector)
 
 ## 项目概览
 
-一个全栈 Web 应用，用户选择《摩登家庭》季/集，系统自动抓取英文剧本，识别生词（含音标、中文释义、考试标签、剧中原句），支持一键推送到欧路词典生词本或墨墨背单词云词本。
+一个全栈 Web 应用，用户搜索并选择任意美剧（数据源 springfieldspringfield.co.uk）的季/集，系统抓取英文剧本、识别生词（含音标、中文释义、考试标签、剧中原句），由用户自行勾选后一键推送到欧路词典生词本或墨墨背单词云词本。搜索不到该剧时给出明确提示。
 
 ## 技术栈
 
@@ -14,8 +14,10 @@
 
 ```
 ├── server/
+│   ├── cache.ts           # 进程内有界 TTL 缓存（内存，不落盘）
 │   ├── routes/
-│   │   └── index.ts        # API 路由 (/api/episodes, /api/transcript)
+│   │   ├── index.ts        # API 路由 (/api/shows, /api/episodes, /api/transcript)
+│   │   └── maimemo.ts      # 墨墨 API 代理 (/api/maimemo/*)
 │   ├── server.ts           # Express 服务入口
 │   └── vite.ts             # Vite 中间件集成
 ├── src/
@@ -77,21 +79,28 @@ pnpm run lint
 
 | 路径 | 方法 | 说明 |
 |------|------|------|
-| `/api/episodes` | GET | 获取全 11 季剧集目录 |
-| `/api/transcript?season=1&episode=1` | GET | 获取指定集剧本对白行数组 |
+| `/api/shows?q=friends` | GET | 按关键词搜索美剧，返回 `[{ id, title }]`；无匹配时 `data: []` 并附带提示文案 |
+| `/api/episodes?show=modern-family` | GET | 获取该剧按季分组的集目录；剧不存在返回 404 + 提示 |
+| `/api/transcript?show=modern-family&season=1&episode=1` | GET | 获取指定集剧本对白行数组（响应带 `Cache-Control: public, max-age=86400`） |
+| `/api/maimemo/notepads` | GET / POST | 墨墨云词本列表 / 新建（代理） |
+| `/api/maimemo/notepads/:id` | GET / POST | 墨墨云词本详情 / 更新（代理） |
 | `/data/dict.json` | GET | 静态词典数据 |
 | `/data/lemma.json` | GET | 静态词形还原映射 |
 
 ## 核心功能
 
-1. **剧本抓取**: 后端代理抓取 springfieldspringfield.co.uk，服务端缓存避免重复请求
-2. **生词识别**: 基于 ECDICT 词典数据，支持词形还原、难度分档（高考/四六级/考研雅思）
-3. **欧路词典对接**: 前端直连 API，支持列生词本、批量加词、逐条附带例句
-4. **墨墨背单词对接**: 前端直连 API，支持列云词本、新建/追加/覆盖写入
-5. **本地存储**: 所有 token 和偏好设置仅存于浏览器 localStorage
+1. **剧集搜索**: 后端代理 springfieldspringfield.co.uk 的站内搜索，支持任意美剧；搜不到时返回明确提示
+2. **剧本抓取**: 季/集目录与单集剧本均从站点实时扒取；缓存只放在进程内存（有界 LRU + TTL）和浏览器 HTTP 缓存，**不写服务端磁盘**
+3. **生词识别**: 基于 ECDICT 词典数据，支持词形还原、难度分档（高考/四六级/考研雅思）；生成后默认不勾选，由用户自选
+4. **欧路词典对接**: 前端直连 API，支持列生词本、批量加词
+5. **墨墨背单词对接**: 经 `/api/maimemo/*` 后端代理，支持列云词本、新建/追加/覆盖写入
+6. **本地存储**: 所有 token、上一次选择的剧集和偏好设置仅存于浏览器 localStorage
 
 ## 注意事项
 
 - 后端不存储用户 token，所有敏感信息仅在浏览器端
+- 剧本/剧集目录**不落服务端磁盘**：原来写在 `data/cache/` 的 JSON 已删除（目录已加入 `.gitignore`），改为 `server/cache.ts` 的有界内存缓存 + 响应头 `Cache-Control`
 - 词典数据为内置精简版，覆盖四六级到 GRE 核心词汇
-- 欧路/墨墨 API 均支持浏览器直接跨域调用
+- 欧路 API 支持浏览器直连（预检返回 `Access-Control-Allow-Origin: *` 与 `Access-Control-Allow-Headers: authorization`）
+- 墨墨 API **不支持**浏览器直连：对 OPTIONS 预检不返回任何 `Access-Control-*` 头，带 `Authorization` 的请求预检失败、真实请求发不出去；必须走 `/api/maimemo/*` 代理
+- 墨墨 token 由前端放在 `X-Maimemo-Token` 头里，后端转成 `Authorization: Bearer <token>` 转发，仅在内存中传递、不落盘

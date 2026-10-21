@@ -1,10 +1,13 @@
 import type { MaimemoNotepad, PushResult } from '../types';
 
-const MAIMEMO_BASE = 'https://open.maimemo.com/open/api/v1';
+// 走同源后端代理：墨墨 API 不支持浏览器跨域（预检不返回 CORS 头），
+// 由 server/routes/maimemo.ts 转发到 https://open.maimemo.com/open/api/v1
+const MAIMEMO_BASE = '/api/maimemo';
 
 function getHeaders(token: string): Record<string, string> {
   return {
-    'Authorization': `Bearer ${token}`,
+    // token 通过自定义头传给后端，后端转成 Authorization: Bearer 转发，不落盘
+    'X-Maimemo-Token': token,
     'Accept': 'application/json',
     'Content-Type': 'application/json',
   };
@@ -37,7 +40,7 @@ async function rateLimitedFetch(url: string, options: RequestInit): Promise<Resp
 
 // Test connection and list notepads
 export async function testMaimemoConnection(token: string): Promise<MaimemoNotepad[]> {
-  const res = await rateLimitedFetch(`${MAIMEMO_BASE}/memo/notepads?limit=100&offset=0`, {
+  const res = await rateLimitedFetch(`${MAIMEMO_BASE}/notepads?limit=100&offset=0`, {
     headers: getHeaders(token),
   });
 
@@ -62,7 +65,7 @@ export async function createNotepad(
 ): Promise<string> {
   const content = words.join('\n');
   
-  const res = await rateLimitedFetch(`${MAIMEMO_BASE}/memo/notepads`, {
+  const res = await rateLimitedFetch(`${MAIMEMO_BASE}/notepads`, {
     method: 'POST',
     headers: getHeaders(token),
     body: JSON.stringify({
@@ -87,7 +90,7 @@ export async function createNotepad(
 
 // Get notepad content
 export async function getNotepad(token: string, notepadId: string): Promise<MaimemoNotepad> {
-  const res = await rateLimitedFetch(`${MAIMEMO_BASE}/memo/notepads/${notepadId}`, {
+  const res = await rateLimitedFetch(`${MAIMEMO_BASE}/notepads/${notepadId}`, {
     headers: getHeaders(token),
   });
 
@@ -125,7 +128,7 @@ export async function updateNotepad(
     // Get existing notepad to preserve metadata
     const existing = await getNotepad(token, notepadId);
     
-    const res = await rateLimitedFetch(`${MAIMEMO_BASE}/memo/notepads/${notepadId}`, {
+    const res = await rateLimitedFetch(`${MAIMEMO_BASE}/notepads/${notepadId}`, {
       method: 'POST',
       headers: getHeaders(token),
       body: JSON.stringify({

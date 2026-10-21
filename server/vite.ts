@@ -2,12 +2,16 @@
 // ABOUTME: Handles dev middleware and production static file serving
 
 import type { Application, Request, Response } from 'express';
+import type { Server } from 'http';
 import express from 'express';
 import path from 'path';
 import fs from 'fs';
 import { createServer as createViteServer } from 'vite';
 
 const isDev = process.env.COZE_PROJECT_ENV !== 'PROD';
+// 部署平台（Coze）上 HMR 走 vite.config.ts 里配置的独立 6000 端口 + 网关代理，
+// 这种场景必须保持 Vite 自建 WS 服务；本地才把 Express 的 server 交给 Vite 复用 5000。
+const onHostingPlatform = Boolean(process.env.COZE_PROJECT_TYPE || process.env.COZE_EVAL);
 
 /**
  * 集成 Vite 开发服务器（中间件模式）
@@ -16,11 +20,18 @@ const isDev = process.env.COZE_PROJECT_ENV !== 'PROD';
  * vite.config.ts，展开后 react 插件会在 plugins 里出现两次，导致 React Refresh
  * 前缀被注入两遍，源文件编译报 "The symbol has already been declared"。
  * 因此只传中间件模式相关配置，其余交给 Vite 自行读取配置文件。
+ *
+ * httpServer 是 Express 的 http.Server：本地开发时通过 hmr.server 交给 Vite，
+ * HMR 的 WebSocket 才会挂在 5000 端口上（否则 Vite 会用默认的 24678 单独监听，
+ * 多个实例并存时只打印 "Port 24678 is already in use"，HMR 静默失效）。
+ * 注意 middlewareMode 的 { server } 对象形式在 Vite 6 里只影响 proxy，不影响 HMR。
  */
-export async function setupViteMiddleware(app: Application) {
+export async function setupViteMiddleware(app: Application, httpServer: Server) {
   const vite = await createViteServer({
     server: {
       middlewareMode: true,
+      // 部署平台依赖 vite.config.ts 里 hmr.port=6000 的独立 WS 服务，不接管
+      ...(onHostingPlatform ? {} : { hmr: { server: httpServer } }),
     },
     appType: 'spa',
   });
@@ -60,9 +71,9 @@ export function setupStaticServer(app: Application) {
 /**
  * 根据环境设置 Vite
  */
-export async function setupVite(app: Application) {
+export async function setupVite(app: Application, httpServer: Server) {
   if (isDev) {
-    await setupViteMiddleware(app);
+    await setupViteMiddleware(app, httpServer);
   } else {
     setupStaticServer(app);
   }

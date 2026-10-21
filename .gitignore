@@ -14,6 +14,9 @@ __pycache__/
 .env
 .cozeproj/reduction
 
+# 剧本/剧集索引的服务端缓存（已改为进程内内存缓存，不再落盘）
+data/cache/
+
 # JS/TS bundlers & build outputs
 .next
 .nuxt
@@ -39,7 +42,8 @@ bin/
 *.test
 
 # Editor / IDE
-.vscode/
+# 用 .vscode/* 而非 .vscode/，git 才会在目录内应用下面的白名单（!.vscode/launch.json）
+.vscode/*
 .idea/
 *.iml
 
@@ -129,6 +133,7 @@ node-compile-cache/
 .vscode/*
 !.vscode/extensions.json
 !.vscode/settings.json
+!.vscode/launch.json
 *.suo
 *.ntvs*
 *.njsproj

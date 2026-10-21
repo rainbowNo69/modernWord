@@ -5,6 +5,9 @@
   "scripts": {
     "build": "bash ./scripts/build.sh",
     "dev": "bash ./scripts/dev.sh",
+    "kill:port": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/kill-port.ps1",
+    "debug": "pnpm kill:port && node --import tsx --inspect=9229 server/server.ts",
+    "debug:watch": "pnpm kill:port && node --import tsx --inspect=9229 --watch server/server.ts",
     "preinstall": "npx only-allow pnpm",
     "lint": "eslint",
     "lint:build": "eslint . --quiet",

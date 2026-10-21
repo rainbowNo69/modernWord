@@ -32,10 +32,15 @@ async function startServer(): Promise<Server> {
   app.use(express.urlencoded({ extended: true }));
 
   // Serve data directory (dictionary files) as static
+  // 词典可以被 process-dict.mjs 重新生成，这里不能做强缓存：
+  // 之前 maxAge: '1d' 会让浏览器一整天都拿旧词典（重新生成后前端完全无感知）。
+  // 改成 no-cache + ETag：每次都校验，内容没变只回 304，不会重复传 2MB。
   app.use('/data', express.static(path.resolve(process.cwd(), 'data'), {
-    maxAge: '1d',
+    etag: true,
+    lastModified: true,
     setHeaders: (res) => {
       res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Cache-Control', 'no-cache');
     },
   }));
 
@@ -43,10 +48,11 @@ async function startServer(): Promise<Server> {
   app.use(router);
 
   // 集成 Vite（开发模式）或静态文件服务（生产模式）
-  await setupVite(app);
+  // 把 http server 交给 Vite，HMR 的 WebSocket 复用 5000 端口，不再另占 24678
+  await setupVite(app, server);
 
   // 全局错误处理
-  app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
     console.error('Server error:', err);
     const status = 'status' in err ? (err as { status?: number }).status ?? 500 : 500;
     res.status(status).json({

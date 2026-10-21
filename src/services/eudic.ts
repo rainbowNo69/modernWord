@@ -34,7 +34,8 @@ export async function addWordsToEudic(
   token: string,
   categoryId: string,
   words: string[],
-  withContext: boolean = false
+  // 例句随词推送尚未实现，暂保留参数占位
+  _withContext: boolean = false
 ): Promise<PushResult> {
   if (words.length === 0) {
     return { success: 0, failed: 0, failedWords: [], message: '没有需要添加的单词' };

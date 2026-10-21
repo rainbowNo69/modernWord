@@ -20,6 +20,8 @@ export default defineConfig([
     },
     rules: {
       'import/no-cycle': ['error', { ignoreExternal: true }],
+      // Express 的错误处理中间件必须保留 4 个形参，用 _ 前缀表示有意不使用
+      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
     },
   },
   globalIgnores([

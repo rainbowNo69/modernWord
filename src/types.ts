@@ -17,6 +17,12 @@ export interface VocabWord {
   added: boolean;
 }
 
+// Show (TV series) info from the scripts site
+export interface Show {
+  id: string; // site slug, e.g. modern-family
+  title: string;
+}
+
 // Episode info
 export interface Episode {
   season: number;
@@ -66,6 +72,7 @@ export interface PushResult {
 
 // LocalStorage keys
 export const LS_KEYS = {
+  SHOW: 'mvcc.show', // 最近一次选择的剧集
   EUDIC_TOKEN: 'mvcc.eudicToken',
   MAIMEMO_TOKEN: 'mvcc.maimemoToken',
   EUDIC_CATEGORY: 'mvcc.eudicCategory',

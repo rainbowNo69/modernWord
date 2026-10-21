@@ -13,7 +13,7 @@
 ### 启动开发服务器
 
 ```bash
-coze-dev dev
+pnpm dev
 ```
 
 启动后，在浏览器中打开 [http://localhost:5000](http://localhost:5000) 查看应用。
@@ -23,18 +23,60 @@ coze-dev dev
 ### 构建生产版本
 
 ```bash
-coze-dev build
+pnpm build
 ```
 
-构建产物位于 `dist/` 目录，可直接部署到静态托管服务。
+构建产物位于 `dist/`（前端）与 `dist-server/`（后端）目录。
 
 ### 预览生产版本
 
 ```bash
-coze-dev start
+pnpm start
 ```
 
-在本地启动一个静态服务器，预览生产构建的效果。
+以生产模式启动构建产物（Express 静态服务 + API），预览生产构建的效果。
+
+## 常用命令
+
+全部在项目根目录执行，包管理器统一使用 pnpm。
+
+| 命令 | 作用 |
+| --- | --- |
+| `pnpm install` | 安装依赖（`preinstall` 会拦截 npm/yarn，强制 pnpm） |
+| `pnpm dev` | 开发模式：detach 启动 `tsx watch server/server.ts`，Express + Vite HMR 单进程，端口 5000；日志写 `logs/server.log`，PID 写 `logs/server.pid` |
+| `pnpm dev:win` | 与 `pnpm dev` 等价的 Windows PowerShell 脚本（`scripts/dev.ps1`），Windows 下推荐 |
+| `pnpm kill:port` | 释放端口占用（默认 5000 Express + 24678 旧版 Vite HMR），`/T` 连 pnpm → tsx → node 整个进程树一起杀 |
+| `pnpm debug` | 先清端口，再以调试模式启动后端：`node --import tsx --inspect=9229 server/server.ts`，供 IDE 断点调试 |
+| `pnpm debug:watch` | 同上，额外带 `--watch` 文件监听热重启，配合 IDE「附加到 9229」使用 |
+| `pnpm build` / `pnpm build:win` | 构建前端 `dist/` + 后端 `dist-server/` |
+| `pnpm start` / `pnpm start:win` | 以生产模式启动构建产物（Express 静态服务 + API） |
+| `pnpm ts-check` | TypeScript 类型检查（`tsc --noEmit`） |
+| `pnpm lint` / `pnpm lint:build` | ESLint 全量检查 / 只报错误（`--quiet`） |
+| `pnpm lint:style` | stylelint 检查 `src/**/*.css` |
+| `pnpm validate` / `pnpm validate:win` | 并行执行类型检查 + ESLint + stylelint |
+
+### 数据与缓存
+
+- 剧本、季/集目录全部来自 springfieldspringfield.co.uk，由后端实时扒取
+- **服务端磁盘不缓存任何剧本**：上游数据只放在进程内的有界 LRU + TTL 缓存（`server/cache.ts`，剧本 50 条 / 目录 30 条 / 搜索 100 条，各 24h），进程重启即清空
+- 单集剧本响应带 `Cache-Control: public, max-age=86400`，重复查看由浏览器缓存兜底，不会重复回源
+- 用户 token、最近选择的剧集等只存在浏览器 localStorage
+
+- **5000**：Express HTTP 服务，同时承载前端页面、`/api/*` 与 `/data/*` 静态词典。
+- **24678**：Vite 在 middleware 模式下 HMR WebSocket 的默认端口。本项目 `server/vite.ts` 本地开发时通过 `hmr: { server: httpServer }` 把 HMR 挂到 Express 的 http server 上，因此**不再单独监听 24678**（`/@vite/client` 也不会再注入该端口），多实例并存不会互相抢端口；`pnpm kill:port` 保留对它的清理，用于回收旧代码启动的残留进程。
+  - 常见报错 `WebSocket server error: Port 24678 is already in use`：旧实例已占用该端口，新实例 HTTP 正常但 HMR 失效，`pnpm kill:port` 后重启即可。
+- **6000**：仅在部署平台（`COZE_PROJECT_TYPE` / `COZE_EVAL` 存在）时使用，Vite 按 `vite.config.ts` 里的 `hmr.port` 自建 HMR 服务并由网关代理，本地不受影响。
+
+### 调试后端（断点）
+
+1. 先清掉正在运行的开发服务：`pnpm kill:port`（否则 5000 被占会 `EADDRINUSE` 直接退出）
+2. 在 IDE 中打开 `server/**/*.ts`，行号左侧点击下断点（F9）
+3. 任选一种方式启动：
+   - 直接调试：运行和调试面板选 **「Server: 直接启动后端并调试」** → F5（等价于 `pnpm debug`）
+   - 带热重启：终端执行 `pnpm debug:watch`，调试面板选 **「Server: 附加到 9229」** → F5（`restart: true`，重启后自动重连）
+4. 触发请求命中断点：浏览器打开 `http://localhost:5000/`，或直接访问 `http://localhost:5000/api/transcript?season=1&episode=1`
+
+配置位于 `.vscode/launch.json`（已在 `.gitignore` 中放行，可随仓库共享）。不想用 IDE 时，也可用 `edge://inspect` / `chrome://inspect` 连接 9229 端口调试。
 
 ## 项目结构
 
@@ -66,15 +108,15 @@ coze-dev start
 
 **工作原理：**
 
-- **开发模式** (`coze-dev dev`)：
+- **开发模式** (`pnpm dev`)：
   - 运行 `server/server.ts` 启动 Express 服务器
   - Vite 以 middleware 模式集成到 Express
-  - 前端支持 HMR（热模块替换）
+  - 前端支持 HMR（热模块替换），HMR 的 WebSocket 复用 5000 端口
   - 后端 API 和前端在同一进程，端口 5000
 
-- **生产模式** (`coze-dev start`)：
-  - `coze-dev build` 构建前端 → `dist/` 目录
-  - `coze-dev build` 构建后端 → `dist-server/index.js` (CommonJS 格式)
+- **生产模式** (`pnpm start`)：
+  - `pnpm build` 构建前端 → `dist/` 目录
+  - `pnpm build` 构建后端 → `dist-server/index.js` (CommonJS 格式)
   - 运行 `dist-server/index.js` 启动生产服务器
   - Express 服务静态文件 + API 路由
   - 单一 Node.js 进程，轻量高效
@@ -356,7 +398,7 @@ console.log(apiUrl); // https://api.example.com
 ## 技术栈
 
 **前端：**
-- **构建工具**: Vite 7.x
+- **构建工具**: Vite 6.x
 - **语言**: TypeScript 5.x
 - **样式**: Tailwind CSS 3.x
 
@@ -386,7 +428,7 @@ console.log(apiUrl); // https://api.example.com
 2. **使用 TypeScript** 进行类型安全开发，避免使用 `any`
 3. **使用 Tailwind CSS** 进行样式开发，支持响应式和暗色模式
 4. **环境变量必须以 `VITE_` 开头** 才能在客户端代码中访问
-5. **开发时使用 `coze-dev dev`**，支持热更新和快速刷新
+5. **开发时使用 `pnpm dev`**，支持热更新和快速刷新；调试断点用 `pnpm debug` / `pnpm debug:watch`
 6. **API 路由以 `/api` 开头**，避免与前端路由冲突
 7. **单进程架构**：开发和生产环境都是前后端在同一进程中运行
 
@@ -412,7 +454,7 @@ const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
 **Q: 如何部署？**
 
-1. 运行 `coze-dev build` 构建前后端
+1. 运行 `pnpm build` 构建前后端
 2. 将整个项目上传到服务器
 3. 运行 `pnpm install --prod`
-4. 运行 `coze-dev start` 启动服务
+4. 运行 `pnpm start` 启动服务
