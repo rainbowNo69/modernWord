@@ -1,6 +1,6 @@
 # ABOUTME: Cloudflare Pages 项目配置（Git 集成或 wrangler 部署都会读它）
 # ABOUTME: 前端静态资源在 dist/，API 在 functions/，无需 Secrets
 
-name = "modern-word"
+name = 'modernword'
 compatibility_date = "2026-09-01"
 pages_build_output_dir = "dist"
