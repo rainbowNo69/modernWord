@@ -58,24 +58,12 @@ async function proxyToMaimemo(req: Request, res: Response, upstreamPath: string)
   }
 }
 
-// GET  /api/maimemo/notepads      云词本列表
-router.get('/notepads', (req, res) => {
-  void proxyToMaimemo(req, res, '/memo/notepads');
-});
-
-// POST /api/maimemo/notepads      新建云词本
-router.post('/notepads', (req, res) => {
-  void proxyToMaimemo(req, res, '/memo/notepads');
-});
-
-// GET  /api/maimemo/notepads/:id  云词本详情
-router.get('/notepads/:id', (req, res) => {
-  void proxyToMaimemo(req, res, `/memo/notepads/${req.params.id}`);
-});
-
-// POST /api/maimemo/notepads/:id  更新云词本（追加/覆盖）
-router.post('/notepads/:id', (req, res) => {
-  void proxyToMaimemo(req, res, `/memo/notepads/${req.params.id}`);
+// 通用转发：/api/maimemo/<任意路径> -> https://open.maimemo.com/open/api/v1/<任意路径>
+// 前端用到的路径：/memo/notepads、/memo/notepads/:id、/memo/vocabulary/query、/memo/phrases
+router.all('/*', (req, res) => {
+  // Express 4 的通配参数在 req.params[0] 里（@types/express 5 的类型未覆盖，这里显式断言）
+  const rest = (req.params as unknown as Record<string, string>)[0] ?? '';
+  void proxyToMaimemo(req, res, rest ? `/${rest}` : '');
 });
 
 export default router;

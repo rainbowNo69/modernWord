@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { useLocalStorage } from '../hooks/useLocalStorage';
 import { testEudicConnection } from '../services/eudic';
 import { testMaimemoConnection } from '../services/maimemo';
+import { TokenExpiredError } from '../services/errors';
 import { LS_KEYS } from '../types';
 import type { EudicCategory, MaimemoNotepad } from '../types';
 
@@ -44,18 +45,23 @@ function TokenInput({ value, onChange, placeholder, accent }: {
   );
 }
 
-function SectionCard({ title, dot, accent, link, children }: {
+function SectionCard({ title, dot, accent, checkboxClass, enabled, onToggleEnabled, link, children }: {
   title: string;
   dot: string;
   accent: string;
+  checkboxClass: string;
+  enabled: boolean;
+  onToggleEnabled: (next: boolean) => void;
   link: { href: string; label: string };
   children: ReactNode;
 }) {
   return (
-    <section className="rounded-2xl border border-stone-200 bg-white shadow-sm p-5 sm:p-6">
+    <section className={`rounded-2xl border bg-white shadow-sm p-5 sm:p-6 transition-opacity ${
+      enabled ? 'border-stone-200' : 'border-stone-200/70'
+    }`}>
       <div className="flex items-center gap-2 mb-4">
-        <span className={`w-2 h-2 rounded-full ${dot}`}></span>
-        <h2 className="font-semibold text-stone-900">{title}</h2>
+        <span className={`w-2 h-2 rounded-full ${enabled ? dot : 'bg-stone-300'}`}></span>
+        <h2 className={`font-semibold ${enabled ? 'text-stone-900' : 'text-stone-400'}`}>{title}</h2>
         <a
           href={link.href}
           target="_blank"
@@ -65,7 +71,20 @@ function SectionCard({ title, dot, accent, link, children }: {
           {link.label}
         </a>
       </div>
-      <div className="space-y-3.5">{children}</div>
+
+      <label className="flex items-center gap-2 text-sm mb-3.5 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={enabled}
+          onChange={(e) => onToggleEnabled(e.target.checked)}
+          className={`rounded border-stone-300 ${checkboxClass}`}
+        />
+        <span className={enabled ? 'text-stone-700' : 'text-stone-400'}>
+          启用（关闭后主页面不再显示推送入口）
+        </span>
+      </label>
+
+      <div className={`space-y-3.5 ${enabled ? '' : 'opacity-50'}`}>{children}</div>
     </section>
   );
 }
@@ -76,6 +95,10 @@ export default function Settings({ onBack }: SettingsProps) {
   const [eudicCategory, setEudicCategory] = useLocalStorage(LS_KEYS.EUDIC_CATEGORY, '');
   const [maimemoNotepad, setMaimemoNotepad] = useLocalStorage(LS_KEYS.MAIMEMO_NOTEPAD, '');
   const [maimemoMode, setMaimemoMode] = useLocalStorage<'append' | 'overwrite'>(LS_KEYS.MAIMEMO_MODE, 'append');
+  const [eudicEnabled, setEudicEnabled] = useLocalStorage<boolean>(LS_KEYS.EUDIC_ENABLED, true);
+  const [maimemoEnabled, setMaimemoEnabled] = useLocalStorage<boolean>(LS_KEYS.MAIMEMO_ENABLED, true);
+  const [eudicWithContext, setEudicWithContext] = useLocalStorage<boolean>(LS_KEYS.EUDIC_WITH_CONTEXT, true);
+  const [maimemoWithExample, setMaimemoWithExample] = useLocalStorage<boolean>(LS_KEYS.MAIMEMO_WITH_EXAMPLE, true);
 
   const [eudicCategories, setEudicCategories] = useState<EudicCategory[]>([]);
   const [maimemoNotepads, setMaimemoNotepads] = useState<MaimemoNotepad[]>([]);
@@ -83,6 +106,8 @@ export default function Settings({ onBack }: SettingsProps) {
   const [maimemoStatus, setMaimemoStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [eudicError, setEudicError] = useState('');
   const [maimemoError, setMaimemoError] = useState('');
+  const [eudicAuthExpired, setEudicAuthExpired] = useState(false);
+  const [maimemoAuthExpired, setMaimemoAuthExpired] = useState(false);
 
   // Auto-test connections on mount if tokens exist
   useEffect(() => {
@@ -103,6 +128,7 @@ export default function Settings({ onBack }: SettingsProps) {
       }
     } catch (err) {
       setEudicStatus('error');
+      setEudicAuthExpired(err instanceof TokenExpiredError);
       setEudicError(err instanceof Error ? err.message : '连接失败');
     }
   }
@@ -120,6 +146,7 @@ export default function Settings({ onBack }: SettingsProps) {
       }
     } catch (err) {
       setMaimemoStatus('error');
+      setMaimemoAuthExpired(err instanceof TokenExpiredError);
       setMaimemoError(err instanceof Error ? err.message : '连接失败');
     }
   }
@@ -149,6 +176,9 @@ export default function Settings({ onBack }: SettingsProps) {
           title="欧路词典"
           dot="bg-teal-600"
           accent="text-teal-700"
+          checkboxClass="text-teal-600 focus:ring-teal-500"
+          enabled={eudicEnabled}
+          onToggleEnabled={setEudicEnabled}
           link={{ href: 'https://my.eudic.net/OpenAPI/Authorization', label: '获取 Token' }}
         >
           <div className="flex gap-2">
@@ -182,13 +212,35 @@ export default function Settings({ onBack }: SettingsProps) {
             </select>
           )}
 
-          {eudicStatus === 'error' && <p className="text-sm text-red-600">{eudicError}</p>}
+          {eudicStatus === 'success' && (
+            <label className="flex items-start gap-2 text-sm text-stone-600 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={eudicWithContext}
+                onChange={(e) => setEudicWithContext(e.target.checked)}
+                className="mt-0.5 rounded border-stone-300 text-teal-600 focus:ring-teal-500"
+              />
+              <span>
+                添加时写入剧中原句
+                <span className="block text-xs text-stone-400">
+                  欧路里显示为单词语境；批量接口不支持，会改为逐词提交，单词多时较慢
+                </span>
+              </span>
+            </label>
+          )}
+
+          {eudicStatus === 'error' && (
+            <p className={`text-sm ${eudicAuthExpired ? 'text-amber-700' : 'text-red-600'}`}>{eudicError}</p>
+          )}
         </SectionCard>
 
         <SectionCard
           title="墨墨背单词"
           dot="bg-orange-600"
           accent="text-orange-700"
+          checkboxClass="text-orange-600 focus:ring-orange-500"
+          enabled={maimemoEnabled}
+          onToggleEnabled={setMaimemoEnabled}
           link={{ href: 'https://open.maimemo.com/', label: '获取 Token' }}
         >
           <div className="flex gap-2">
@@ -222,7 +274,26 @@ export default function Settings({ onBack }: SettingsProps) {
             </select>
           )}
 
-          {maimemoStatus === 'error' && <p className="text-sm text-red-600">{maimemoError}</p>}
+          {maimemoStatus === 'success' && (
+            <label className="flex items-start gap-2 text-sm text-stone-600 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={maimemoWithExample}
+                onChange={(e) => setMaimemoWithExample(e.target.checked)}
+                className="mt-0.5 rounded border-stone-300 text-orange-600 focus:ring-orange-500"
+              />
+              <span>
+                添加时为单词创建例句
+                <span className="block text-xs text-stone-400">
+                  云词本只存单词，例句走墨墨「例句」接口；平台限制每天最多创建 600 条内容
+                </span>
+              </span>
+            </label>
+          )}
+
+          {maimemoStatus === 'error' && (
+            <p className={`text-sm ${maimemoAuthExpired ? 'text-amber-700' : 'text-red-600'}`}>{maimemoError}</p>
+          )}
 
           <div className="flex items-center gap-5 text-sm text-stone-600 pt-1">
             <label className="flex items-center gap-2 cursor-pointer">

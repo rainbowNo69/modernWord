@@ -1,14 +1,14 @@
-// ABOUTME: Pages Function 版 /api/maimemo/notepads[/:id] —— 墨墨开放平台同源代理
+// ABOUTME: Pages Function 版 /api/maimemo/* —— 墨墨开放平台同源代理（通用转发）
 // ABOUTME: Token 只从 X-Maimemo-Token 头读取并转发为 Authorization，服务端不落盘
 
-import { errorMessage, jsonResponse } from '../../../../lib/upstream';
+import { errorMessage, jsonResponse } from '../../../lib/upstream';
 
 const MAIMEMO_BASE = 'https://open.maimemo.com/open/api/v1';
 const UPSTREAM_TIMEOUT_MS = 20000;
 
 interface MaimemoContext {
   request: Request;
-  params: { id?: string | string[] };
+  params: { path?: string | string[] };
 }
 
 async function proxy(context: MaimemoContext): Promise<Response> {
@@ -19,8 +19,8 @@ async function proxy(context: MaimemoContext): Promise<Response> {
     return jsonResponse({ error: '缺少墨墨 Token（请求头 X-Maimemo-Token）' }, { status: 400 });
   }
 
-  const rawId = Array.isArray(params.id) ? params.id[0] : params.id;
-  const target = new URL(`${MAIMEMO_BASE}/memo/notepads${rawId ? `/${encodeURIComponent(rawId)}` : ''}`);
+  const rawPath = Array.isArray(params.path) ? params.path.join('/') : params.path;
+  const target = new URL(`${MAIMEMO_BASE}${rawPath ? `/${rawPath}` : ''}`);
   new URL(request.url).searchParams.forEach((value, key) => target.searchParams.set(key, value));
 
   const hasBody = request.method !== 'GET' && request.method !== 'HEAD';

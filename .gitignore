@@ -151,3 +151,5 @@ node-compile-cache/
 .vite/
 .coze-logs
 .codegraph/
+outputs/xhs
+.workbuddy/memory

@@ -179,7 +179,7 @@ export default function WordList({ words, selectedWords, onSelectionChange }: Wo
               selectedWords.has(word.word)
                 ? 'border-teal-200 bg-teal-50/50'
                 : 'border-stone-100 bg-white hover:border-stone-200'
-            } ${word.added ? 'opacity-60' : ''}`}
+            } ${word.addedEudic && word.addedMaimemo ? 'opacity-60' : ''}`}
             onClick={() => toggleWord(word.word)}
           >
             <input
@@ -216,8 +216,11 @@ export default function WordList({ words, selectedWords, onSelectionChange }: Wo
                     {TAG_LABELS[tag] || tag}
                   </span>
                 ))}
-                {word.added && (
-                  <span className="px-1.5 py-0.5 text-xs rounded bg-green-100 text-green-700">已添加</span>
+                {word.addedEudic && (
+                  <span className="px-1.5 py-0.5 text-xs rounded bg-teal-100 text-teal-700">欧路</span>
+                )}
+                {word.addedMaimemo && (
+                  <span className="px-1.5 py-0.5 text-xs rounded bg-orange-100 text-orange-700">墨墨</span>
                 )}
               </div>
               <p className="text-sm text-stone-600 mt-1 leading-relaxed">{word.translation}</p>

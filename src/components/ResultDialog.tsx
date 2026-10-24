@@ -3,11 +3,12 @@ import type { PushResult } from '../types';
 interface ResultDialogProps {
   isOpen: boolean;
   onClose: () => void;
+  onGoSettings: () => void;
   result: PushResult | null;
   title: string;
 }
 
-export default function ResultDialog({ isOpen, onClose, result, title }: ResultDialogProps) {
+export default function ResultDialog({ isOpen, onClose, onGoSettings, result, title }: ResultDialogProps) {
   if (!isOpen || !result) return null;
 
   return (
@@ -17,10 +18,29 @@ export default function ResultDialog({ isOpen, onClose, result, title }: ResultD
         <h3 className="text-lg font-semibold tracking-tight text-stone-900 mb-4">{title}</h3>
 
         <div className="space-y-3">
+          {result.authExpired && (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
+              <p className="text-sm text-amber-800">Token 已过期，请到设置页重新添加后再试。</p>
+            </div>
+          )}
+
           <div className="flex items-center justify-between">
             <span className="text-stone-600">成功</span>
             <span className="font-semibold text-green-600">{result.success} 词</span>
           </div>
+
+          {result.examples && (
+            <div className="flex items-center justify-between">
+              <span className="text-stone-600">例句</span>
+              <span className="text-sm">
+                <span className="font-semibold text-green-600">{result.examples.success}</span>
+                {' 条成功'}
+                {result.examples.failed > 0 && (
+                  <span className="font-semibold text-red-600"> / {result.examples.failed} 条失败</span>
+                )}
+              </span>
+            </div>
+          )}
 
           {result.failed > 0 && (
             <>
@@ -48,7 +68,15 @@ export default function ResultDialog({ isOpen, onClose, result, title }: ResultD
           </p>
         </div>
 
-        <div className="mt-6 flex justify-end">
+        <div className="mt-6 flex justify-end gap-2">
+          {result.authExpired && (
+            <button
+              onClick={onGoSettings}
+              className="px-4 py-2 bg-amber-600 text-white text-sm font-medium rounded-xl hover:bg-amber-700 transition-colors"
+            >
+              去设置
+            </button>
+          )}
           <button
             onClick={onClose}
             className="px-4 py-2 bg-stone-900 text-white text-sm font-medium rounded-xl hover:bg-stone-800 transition-colors"

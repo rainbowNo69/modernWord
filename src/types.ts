@@ -14,7 +14,9 @@ export interface VocabWord {
   translation: string;
   tags: string[];
   context: string; // original sentence from the script
-  added: boolean;
+  // 分别记录已推送到哪本词典，互不影响（同一个词可以再推到另一本）
+  addedEudic: boolean;
+  addedMaimemo: boolean;
 }
 
 // Show (TV series) info from the scripts site
@@ -63,12 +65,23 @@ export const DIFFICULTY_LABELS: Record<DifficultyLevel, string> = {
   ky: '考研/雅思以上',
 };
 
+// 例句写入结果
+export interface ExamplePushResult {
+  success: number;
+  failed: number;
+  failedWords: string[];
+}
+
 // Push result
 export interface PushResult {
   success: number;
   failed: number;
   failedWords: string[];
   message: string;
+  // Token 过期/失效时为 true，UI 会提示去设置页重新授权
+  authExpired?: boolean;
+  // 附带例句时的写入结果
+  examples?: ExamplePushResult;
 }
 
 // LocalStorage keys
@@ -80,4 +93,8 @@ export const LS_KEYS = {
   MAIMEMO_NOTEPAD: 'mvcc.maimemoNotepad',
   DIFFICULTY: 'mvcc.difficulty',
   MAIMEMO_MODE: 'mvcc.maimemoMode', // 'append' | 'overwrite'
+  EUDIC_ENABLED: 'mvcc.eudicEnabled', // 主页面是否显示欧路入口
+  MAIMEMO_ENABLED: 'mvcc.maimemoEnabled', // 主页面是否显示墨墨入口
+  EUDIC_WITH_CONTEXT: 'mvcc.eudicWithContext', // 推送时是否写入剧中原句
+  MAIMEMO_WITH_EXAMPLE: 'mvcc.maimemoWithExample', // 推送时是否为单词创建例句
 } as const;

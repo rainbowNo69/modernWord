@@ -10,9 +10,10 @@ import { useHashRoute } from './hooks/useHashRoute';
 import { loadDictionary, processTranscript } from './services/dict';
 import { fetchTranscript } from './services/api';
 import { addWordsToEudic } from './services/eudic';
-import { updateNotepad } from './services/maimemo';
+import { updateNotepad, addExamples } from './services/maimemo';
+import { TokenExpiredError } from './services/errors';
 import { LS_KEYS } from './types';
-import type { Show, VocabWord, DifficultyLevel, PushResult } from './types';
+import type { Show, VocabWord, DifficultyLevel, PushResult, ExamplePushResult } from './types';
 
 export default function App() {
   const { route, navigate } = useHashRoute();
@@ -24,6 +25,10 @@ export default function App() {
   const [eudicCategory] = useLocalStorage(LS_KEYS.EUDIC_CATEGORY, '');
   const [maimemoNotepad] = useLocalStorage(LS_KEYS.MAIMEMO_NOTEPAD, '');
   const [maimemoMode] = useLocalStorage<'append' | 'overwrite'>(LS_KEYS.MAIMEMO_MODE, 'append');
+  const [eudicEnabled] = useLocalStorage<boolean>(LS_KEYS.EUDIC_ENABLED, true);
+  const [maimemoEnabled] = useLocalStorage<boolean>(LS_KEYS.MAIMEMO_ENABLED, true);
+  const [eudicWithContext] = useLocalStorage<boolean>(LS_KEYS.EUDIC_WITH_CONTEXT, true);
+  const [maimemoWithExample] = useLocalStorage<boolean>(LS_KEYS.MAIMEMO_WITH_EXAMPLE, true);
 
   const [words, setWords] = useState<VocabWord[]>([]);
   const [selectedWords, setSelectedWords] = useState<Set<string>>(new Set());
@@ -98,11 +103,12 @@ export default function App() {
       return;
     }
 
-    const wordsToPush = words.filter(w => selectedWords.has(w.word) && !w.added);
+    // 已推过欧路的词也可以再推一次（欧路会覆盖星级与语境），不因推过墨墨而被拦
+    const wordsToPush = words.filter(w => selectedWords.has(w.word));
     if (wordsToPush.length === 0) {
       setResultDialog({
         isOpen: true,
-        result: { success: 0, failed: 0, failedWords: [], message: '没有需要添加的单词' },
+        result: { success: 0, failed: 0, failedWords: [], message: '请先勾选要添加的单词' },
         title: '欧路词典',
       });
       return;
@@ -111,12 +117,15 @@ export default function App() {
     setIsPushing(true);
     try {
       const wordList = wordsToPush.map(w => w.word);
-      const result = await addWordsToEudic(eudicToken, eudicCategory, wordList);
+      // 开启「写入原句」时逐条提交，欧路会把句子存成单词语境
+      const contextByWord = eudicWithContext
+        ? new Map(wordsToPush.map(w => [w.word, w.context]))
+        : undefined;
+      const result = await addWordsToEudic(eudicToken, eudicCategory, wordList, contextByWord);
 
-      // Mark added words
       if (result.success > 0) {
         setWords(prev => prev.map(w =>
-          selectedWords.has(w.word) ? { ...w, added: true } : w
+          selectedWords.has(w.word) ? { ...w, addedEudic: true } : w
         ));
       }
 
@@ -129,13 +138,14 @@ export default function App() {
           failed: wordsToPush.length,
           failedWords: wordsToPush.map(w => w.word),
           message: err instanceof Error ? err.message : '推送失败',
+          authExpired: err instanceof TokenExpiredError,
         },
         title: '欧路词典',
       });
     } finally {
       setIsPushing(false);
     }
-  }, [eudicToken, eudicCategory, words, selectedWords]);
+  }, [eudicToken, eudicCategory, eudicWithContext, words, selectedWords]);
 
   const handlePushMaimemo = useCallback(async () => {
     if (!maimemoToken || !maimemoNotepad) {
@@ -147,11 +157,12 @@ export default function App() {
       return;
     }
 
-    const wordsToPush = words.filter(w => selectedWords.has(w.word) && !w.added);
+    // 已推过墨墨的词也可以再推一次（云词本内部会自动去重），不因推过欧路而被拦
+    const wordsToPush = words.filter(w => selectedWords.has(w.word));
     if (wordsToPush.length === 0) {
       setResultDialog({
         isOpen: true,
-        result: { success: 0, failed: 0, failedWords: [], message: '没有需要添加的单词' },
+        result: { success: 0, failed: 0, failedWords: [], message: '请先勾选要添加的单词' },
         title: '墨墨背单词',
       });
       return;
@@ -160,15 +171,39 @@ export default function App() {
     setIsPushing(true);
     try {
       const wordList = wordsToPush.map(w => w.word);
-      const result = await updateNotepad(maimemoToken, maimemoNotepad, wordList, maimemoMode);
+      await updateNotepad(maimemoToken, maimemoNotepad, wordList, maimemoMode);
 
-      if (result.success > 0) {
-        setWords(prev => prev.map(w =>
-          selectedWords.has(w.word) ? { ...w, added: true } : w
-        ));
+      // 云词本只存单词，例句要另外走「例句」接口（需要先把拼写换成 voc_id）
+      let examples: ExamplePushResult | undefined;
+      if (maimemoWithExample) {
+        examples = await addExamples(
+          maimemoToken,
+          wordsToPush.map(w => ({
+            word: w.word,
+            sentence: w.context,
+            origin: show ? show.title : '美剧生词采集器',
+          }))
+        );
       }
 
-      setResultDialog({ isOpen: true, result, title: '墨墨背单词' });
+      setWords(prev => prev.map(w =>
+        selectedWords.has(w.word) ? { ...w, addedMaimemo: true } : w
+      ));
+
+      const exampleText = examples
+        ? `；例句成功 ${examples.success} 条${examples.failed > 0 ? `，失败 ${examples.failed} 条` : ''}`
+        : '';
+      setResultDialog({
+        isOpen: true,
+        result: {
+          success: wordList.length,
+          failed: 0,
+          failedWords: examples ? examples.failedWords : [],
+          message: `成功${maimemoMode === 'append' ? '追加' : '覆盖'} ${wordList.length} 个单词到墨墨云词本${exampleText}`,
+          examples,
+        },
+        title: '墨墨背单词',
+      });
     } catch (err) {
       setResultDialog({
         isOpen: true,
@@ -177,13 +212,14 @@ export default function App() {
           failed: wordsToPush.length,
           failedWords: wordsToPush.map(w => w.word),
           message: err instanceof Error ? err.message : '推送失败',
+          authExpired: err instanceof TokenExpiredError,
         },
         title: '墨墨背单词',
       });
     } finally {
       setIsPushing(false);
     }
-  }, [maimemoToken, maimemoNotepad, words, selectedWords, maimemoMode]);
+  }, [maimemoToken, maimemoNotepad, maimemoWithExample, maimemoMode, words, selectedWords, show]);
 
   return (
     <div className="min-h-screen bg-stone-50 pb-24">
@@ -194,7 +230,7 @@ export default function App() {
             onClick={() => navigate('settings')}
             aria-label="设置"
             title="设置"
-            className={`w-10 h-10 rounded-full inline-flex items-center justify-center border transition-colors ${
+            className={`h-10 px-3 rounded-full inline-flex items-center gap-1.5 border text-sm font-medium transition-colors ${
               route === 'settings'
                 ? 'bg-stone-900 text-white border-stone-900'
                 : 'border-stone-200 text-stone-500 hover:text-stone-900 hover:bg-stone-100'
@@ -204,6 +240,7 @@ export default function App() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
             </svg>
+            <span>设置</span>
           </button>
 
           <button
@@ -300,9 +337,12 @@ export default function App() {
           selectedCount={selectedWords.size}
           onPushEudic={() => void handlePushEudic()}
           onPushMaimemo={() => void handlePushMaimemo()}
+          onGoSettings={() => navigate('settings')}
           isPushing={isPushing}
           hasEudicToken={!!eudicToken}
           hasMaimemoToken={!!maimemoToken}
+          eudicEnabled={eudicEnabled}
+          maimemoEnabled={maimemoEnabled}
         />
       )}
 
@@ -310,6 +350,7 @@ export default function App() {
       <ResultDialog
         isOpen={resultDialog.isOpen}
         onClose={() => setResultDialog({ isOpen: false, result: null, title: '' })}
+        onGoSettings={() => navigate('settings')}
         result={resultDialog.result}
         title={resultDialog.title}
       />

@@ -246,7 +246,8 @@ export function processTranscript(lines: string[], difficulty: DifficultyLevel):
       translation: entry.translation,
       tags,
       context: line,
-      added: false,
+      addedEudic: false,
+      addedMaimemo: false,
     });
   }
 
