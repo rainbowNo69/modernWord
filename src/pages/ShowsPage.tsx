@@ -6,7 +6,10 @@ import { searchShows } from '../services/api';
 
 interface ShowsPageProps {
   currentShow: Show | null;
+  // 「我看过的」：历史点击过的剧目（最新在前）
+  watchedShows: Show[];
   onSelect: (show: Show) => void;
+  onRemoveWatched: (id: string) => void;
   onBack: () => void;
 }
 
@@ -58,7 +61,13 @@ function PosterCard({ show, active, onSelect }: {
   );
 }
 
-export default function ShowsPage({ currentShow, onSelect, onBack }: ShowsPageProps) {
+export default function ShowsPage({
+  currentShow,
+  watchedShows,
+  onSelect,
+  onRemoveWatched,
+  onBack,
+}: ShowsPageProps) {
   const [query, setQuery] = useState('');
   const [searching, setSearching] = useState(false);
   const [results, setResults] = useState<Show[]>([]);
@@ -154,6 +163,44 @@ export default function ShowsPage({ currentShow, onSelect, onBack }: ShowsPagePr
                 <p className="font-medium text-stone-900 truncate">{item.title}</p>
                 <p className="text-xs text-stone-400 truncate mt-0.5">{item.id}</p>
               </button>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {watchedShows.length > 0 && (
+        <section className="mt-10">
+          <h2 className="text-sm font-medium text-stone-500 mb-3">我看过的（{watchedShows.length}）</h2>
+          <div className="flex flex-wrap gap-2">
+            {watchedShows.map(item => (
+              <div
+                key={item.id}
+                className={`group inline-flex items-center gap-1.5 rounded-full border pl-3 pr-1.5 py-1.5 transition-colors ${
+                  currentShow?.id === item.id
+                    ? 'border-teal-500 bg-teal-50'
+                    : 'border-stone-200 bg-white hover:border-stone-300 hover:bg-stone-50'
+                }`}
+              >
+                <button
+                  onClick={() => onSelect(item)}
+                  className={`text-sm max-w-[220px] truncate ${
+                    currentShow?.id === item.id ? 'text-teal-700 font-medium' : 'text-stone-700'
+                  }`}
+                  title={item.title}
+                >
+                  {item.title}
+                </button>
+                <button
+                  onClick={() => onRemoveWatched(item.id)}
+                  aria-label={`从我看过的移除 ${item.title}`}
+                  title="从我看过的移除"
+                  className="w-5 h-5 rounded-full text-stone-300 hover:text-stone-600 hover:bg-stone-200 inline-flex items-center justify-center transition-colors"
+                >
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
             ))}
           </div>
         </section>

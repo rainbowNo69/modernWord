@@ -19,6 +19,7 @@ export default function App() {
   const { route, navigate } = useHashRoute();
 
   const [show, setShow] = useLocalStorage<Show | null>(LS_KEYS.SHOW, null);
+  const [watchedShows, setWatchedShows] = useLocalStorage<Show[]>(LS_KEYS.WATCHED_SHOWS, []);
   const [difficulty, setDifficulty] = useLocalStorage<DifficultyLevel>(LS_KEYS.DIFFICULTY, 'cet4');
   const [eudicToken] = useLocalStorage(LS_KEYS.EUDIC_TOKEN, '');
   const [maimemoToken] = useLocalStorage(LS_KEYS.MAIMEMO_TOKEN, '');
@@ -58,8 +59,14 @@ export default function App() {
     setWords([]);
     setSelectedWords(new Set());
     setError('');
+    // 记进「我看过的」：最新点过的排最前，最多留 24 部
+    setWatchedShows(prev => [next, ...prev.filter(s => s.id !== next.id)].slice(0, 24));
     navigate('home');
-  }, [setShow, navigate]);
+  }, [setShow, setWatchedShows, navigate]);
+
+  const handleRemoveWatched = useCallback((id: string) => {
+    setWatchedShows(prev => prev.filter(s => s.id !== id));
+  }, [setWatchedShows]);
 
   const handleGenerate = useCallback(async (season: number, episode: number) => {
     if (!show) return;
@@ -182,6 +189,8 @@ export default function App() {
             word: w.word,
             sentence: w.context,
             origin: show ? show.title : '美剧生词采集器',
+            translation: w.translation,
+            tags: w.tags,
           }))
         );
       }
@@ -199,7 +208,9 @@ export default function App() {
           success: wordList.length,
           failed: 0,
           failedWords: examples ? examples.failedWords : [],
-          message: `成功${maimemoMode === 'append' ? '追加' : '覆盖'} ${wordList.length} 个单词到墨墨云词本${exampleText}`,
+          message:
+            `成功${maimemoMode === 'append' ? '追加' : '覆盖'} ${wordList.length} 个单词到墨墨云词本${exampleText}`
+            + (examples?.error ? `（例句失败原因：${examples.error}）` : ''),
           examples,
         },
         title: '墨墨背单词',
@@ -274,7 +285,9 @@ export default function App() {
       {route === 'shows' && (
         <ShowsPage
           currentShow={show}
+          watchedShows={watchedShows}
           onSelect={handleSelectShow}
+          onRemoveWatched={handleRemoveWatched}
           onBack={() => navigate('home')}
         />
       )}

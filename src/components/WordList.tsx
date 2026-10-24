@@ -33,6 +33,7 @@ const ALL_TAGS = ['gk', 'cet4', 'cet6', 'ky', 'ielts', 'toefl', 'gre'];
 export default function WordList({ words, selectedWords, onSelectionChange }: WordListProps) {
   const [search, setSearch] = useState('');
   const [tagFilter, setTagFilter] = useState<string | null>(null);
+  const [hideTranslation, setHideTranslation] = useState(false);
 
   const filteredWords = useMemo(
     () => filterWords(words, search, tagFilter),
@@ -136,6 +137,16 @@ export default function WordList({ words, selectedWords, onSelectionChange }: Wo
           <span className="text-stone-600">全选</span>
         </label>
 
+        <label className="flex items-center gap-2 text-sm" title="隐藏后只看英文与原句，用来自测">
+          <input
+            type="checkbox"
+            checked={hideTranslation}
+            onChange={(e) => setHideTranslation(e.target.checked)}
+            className="rounded border-stone-300 text-teal-600 focus:ring-teal-500"
+          />
+          <span className="text-stone-600">隐藏释义</span>
+        </label>
+
         <span className="text-sm text-stone-500">
           已选 <span className="font-medium text-teal-700">{selectedWords.size}</span> / {words.length} 词
         </span>
@@ -223,8 +234,10 @@ export default function WordList({ words, selectedWords, onSelectionChange }: Wo
                   <span className="px-1.5 py-0.5 text-xs rounded bg-orange-100 text-orange-700">墨墨</span>
                 )}
               </div>
-              <p className="text-sm text-stone-600 mt-1 leading-relaxed">{word.translation}</p>
-              <p className="text-xs text-stone-400 mt-1 italic leading-relaxed">
+              {!hideTranslation && (
+                <p className="text-sm text-stone-600 mt-1 leading-relaxed">{word.translation}</p>
+              )}
+              <p className="text-[15px] text-stone-500 mt-2 italic leading-relaxed">
                 {highlightWord(word.context, word.word)}
               </p>
             </div>

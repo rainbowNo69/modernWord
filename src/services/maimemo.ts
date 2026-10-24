@@ -15,12 +15,14 @@ interface RequestInitWithBody {
   body?: unknown;
 }
 
-// 直连时的请求头：墨墨只认 Authorization
-function getDirectHeaders(token: string): Record<string, string> {
+// 直连时的请求头：墨墨只认 Authorization；有 body 时必须显式给
+// Content-Type，否则 fetch 会按 text/plain 发，平台解析不出 JSON 直接 400
+function getDirectHeaders(token: string, withBody: boolean): Record<string, string> {
   return {
     'accept': 'application/json',
     'accept-language': 'zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6',
     'authorization': `Bearer ${token}`,
+    ...(withBody ? { 'content-type': 'application/json' } : {}),
   };
 }
 
@@ -71,7 +73,7 @@ async function maimemoRequest(token: string, path: string, init: RequestInitWith
     });
 
   try {
-    return await send(MAIMEMO_DIRECT_BASE, getDirectHeaders(token));
+    return await send(MAIMEMO_DIRECT_BASE, getDirectHeaders(token, body !== undefined));
   } catch (err) {
     if (!(err instanceof TypeError)) throw err;
     console.warn('[maimemo] 直连被浏览器拦截，改用后端代理:', (err as Error).message);
@@ -120,9 +122,14 @@ interface NotepadResponse {
   data?: { notepad?: MaimemoNotepad };
 }
 
+// 单词查询的返回字段在不同版本里叫 voc / vocabularies，这里尽量都兼容
 interface VocabularyResponse {
   voc?: { id: string; spelling: string }[];
-  data?: { voc?: { id: string; spelling: string }[] };
+  vocabularies?: { id: string; spelling: string }[];
+  data?: {
+    voc?: { id: string; spelling: string }[];
+    vocabularies?: { id: string; spelling: string }[];
+  };
 }
 
 function unwrapNotepads(json: NotepadsResponse): MaimemoNotepad[] {
@@ -134,7 +141,11 @@ function unwrapNotepad(json: NotepadResponse): MaimemoNotepad | null {
 }
 
 function unwrapVocabulary(json: VocabularyResponse): { id: string; spelling: string }[] {
-  return json.data?.voc ?? json.voc ?? [];
+  return json.data?.voc
+    ?? json.data?.vocabularies
+    ?? json.voc
+    ?? json.vocabularies
+    ?? [];
 }
 
 // Test connection and list notepads（limit 上限为 10）
@@ -159,7 +170,7 @@ export async function createNotepad(
         content: words.join('\n'),
         title,
         brief: `美剧生词 - ${words.length} 个单词`,
-        tags: ['美剧生词'],
+        tags: ['其他'],
       },
     },
   });
@@ -211,7 +222,8 @@ export async function updateNotepad(
         content: finalWords.join('\n'),
         title: existing.title,
         brief: existing.brief || `美剧生词 - ${finalWords.length} 个单词`,
-        tags: existing.tags || ['美剧生词'],
+        // 云词本 tags 同样是枚举白名单，兜底用「其他」
+        tags: existing.tags || ['其他'],
       },
     },
   });
@@ -225,6 +237,32 @@ export interface MaimemoExampleInput {
   word: string;
   sentence: string;
   origin: string;
+  // 例句接口的 interpretation 是必填，没有译文时退回单词释义
+  translation?: string;
+  // 生词自带的考试标签（gk/cet4/cet6/ky/ielts/toefl/gre）
+  tags?: string[];
+}
+
+// 例句接口的 tags 是枚举，传白名单外的值（比如“美剧”）会被判 common_invalid_param，
+// 这也是之前例句全部创建失败的原因
+const PHRASE_TAG_BY_WORD_TAG: Record<string, string> = {
+  gk: '初中',
+  cet4: '四级',
+  cet6: '六级',
+  ky: '考研',
+  ielts: '雅思',
+  toefl: '托福',
+  gre: 'GRE',
+};
+
+const FALLBACK_PHRASE_TAG = '词典';
+
+function toPhraseTags(wordTags: string[] | undefined): string[] {
+  const mapped = (wordTags ?? [])
+    .map(t => PHRASE_TAG_BY_WORD_TAG[t])
+    .filter((t): t is string => Boolean(t));
+  const unique = Array.from(new Set(mapped));
+  return unique.length > 0 ? unique : [FALLBACK_PHRASE_TAG];
 }
 
 // 批量查单词在墨墨词库里的 voc_id（一次最多 1000 个拼写）
@@ -264,7 +302,19 @@ export async function addExamples(
     return result;
   }
 
-  const idBySpelling = await queryVocabularyIds(token, items.map(i => i.word));
+  // 查 voc_id 失败不应该让整个推送失败（云词本此时已经写成功了）
+  let idBySpelling: Map<string, string>;
+  try {
+    idBySpelling = await queryVocabularyIds(token, items.map(i => i.word));
+  } catch (err) {
+    if (err instanceof TokenExpiredError) throw err;
+    return {
+      success: 0,
+      failed: items.length,
+      failedWords: items.map(i => i.word),
+      error: err instanceof Error ? err.message : '查询单词 ID 失败',
+    };
+  }
 
   for (const item of items) {
     const vocId = idBySpelling.get(item.word.toLowerCase());
@@ -281,8 +331,8 @@ export async function addExamples(
           phrase: {
             voc_id: vocId,
             phrase: item.sentence,
-            interpretation: '',
-            tags: ['美剧'],
+            interpretation: item.translation || `来自${item.origin}`,
+            tags: toPhraseTags(item.tags),
             origin: item.origin,
           },
         },
@@ -293,6 +343,9 @@ export async function addExamples(
       }
 
       if (!res.ok) {
+        const text = await res.text();
+        // 记下第一条真实错误，方便在界面上看到平台到底为什么拒绝
+        result.error = result.error ?? `HTTP ${res.status} ${text.slice(0, 200)}`;
         result.failed += 1;
         result.failedWords.push(item.word);
         continue;

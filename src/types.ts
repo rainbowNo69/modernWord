@@ -70,6 +70,8 @@ export interface ExamplePushResult {
   success: number;
   failed: number;
   failedWords: string[];
+  // 平台返回的第一条错误，用于在界面上定位失败原因
+  error?: string;
 }
 
 // Push result
@@ -95,6 +97,7 @@ export const LS_KEYS = {
   MAIMEMO_MODE: 'mvcc.maimemoMode', // 'append' | 'overwrite'
   EUDIC_ENABLED: 'mvcc.eudicEnabled', // 主页面是否显示欧路入口
   MAIMEMO_ENABLED: 'mvcc.maimemoEnabled', // 主页面是否显示墨墨入口
+  WATCHED_SHOWS: 'mvcc.watchedShows', // 选剧页「我看过的」：点击过的剧目
   EUDIC_WITH_CONTEXT: 'mvcc.eudicWithContext', // 推送时是否写入剧中原句
   MAIMEMO_WITH_EXAMPLE: 'mvcc.maimemoWithExample', // 推送时是否为单词创建例句
 } as const;
