@@ -98,7 +98,7 @@ export default function Settings({ onBack }: SettingsProps) {
   const [eudicEnabled, setEudicEnabled] = useLocalStorage<boolean>(LS_KEYS.EUDIC_ENABLED, true);
   const [maimemoEnabled, setMaimemoEnabled] = useLocalStorage<boolean>(LS_KEYS.MAIMEMO_ENABLED, true);
   const [eudicWithContext, setEudicWithContext] = useLocalStorage<boolean>(LS_KEYS.EUDIC_WITH_CONTEXT, true);
-  const [maimemoWithExample, setMaimemoWithExample] = useLocalStorage<boolean>(LS_KEYS.MAIMEMO_WITH_EXAMPLE, true);
+  const [maimemoWithExample, setMaimemoWithExample] = useLocalStorage<boolean>(LS_KEYS.MAIMEMO_WITH_EXAMPLE, false);
 
   const [eudicCategories, setEudicCategories] = useState<EudicCategory[]>([]);
   const [maimemoNotepads, setMaimemoNotepads] = useState<MaimemoNotepad[]>([]);

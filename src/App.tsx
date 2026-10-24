@@ -29,7 +29,16 @@ export default function App() {
   const [eudicEnabled] = useLocalStorage<boolean>(LS_KEYS.EUDIC_ENABLED, true);
   const [maimemoEnabled] = useLocalStorage<boolean>(LS_KEYS.MAIMEMO_ENABLED, true);
   const [eudicWithContext] = useLocalStorage<boolean>(LS_KEYS.EUDIC_WITH_CONTEXT, true);
-  const [maimemoWithExample] = useLocalStorage<boolean>(LS_KEYS.MAIMEMO_WITH_EXAMPLE, true);
+  const [maimemoWithExample, setMaimemoWithExample] = useLocalStorage<boolean>(LS_KEYS.MAIMEMO_WITH_EXAMPLE, false);
+  const [exampleDefaultReset, setExampleDefaultReset] = useLocalStorage<boolean>(LS_KEYS.MAIMEMO_EXAMPLE_RESET, false);
+
+  // 老版本默认开启过例句写入，这里一次性恢复为关闭（用户之后手动打开仍会保留）
+  useEffect(() => {
+    if (!exampleDefaultReset) {
+      setMaimemoWithExample(false);
+      setExampleDefaultReset(true);
+    }
+  }, [exampleDefaultReset, setMaimemoWithExample, setExampleDefaultReset]);
 
   const [words, setWords] = useState<VocabWord[]>([]);
   const [selectedWords, setSelectedWords] = useState<Set<string>>(new Set());

@@ -99,5 +99,8 @@ export const LS_KEYS = {
   MAIMEMO_ENABLED: 'mvcc.maimemoEnabled', // 主页面是否显示墨墨入口
   WATCHED_SHOWS: 'mvcc.watchedShows', // 选剧页「我看过的」：点击过的剧目
   EUDIC_WITH_CONTEXT: 'mvcc.eudicWithContext', // 推送时是否写入剧中原句
+  // 例句写入比较慢且有每天 600 条的上限，默认关闭，用户需要时再在设置里打开
   MAIMEMO_WITH_EXAMPLE: 'mvcc.maimemoWithExample', // 推送时是否为单词创建例句
+  // 一次性迁移标记：老版本默认开启过，升级后强制恢复为关闭
+  MAIMEMO_EXAMPLE_RESET: 'mvcc.maimemoExampleDefaultOff',
 } as const;
