@@ -99,17 +99,17 @@ pnpm start
 
 线上是 **Pages 静态前端 + Pages Functions 后端**：`functions/api/**` 提供与本地 Express 完全相同的接口，`lib/upstream.ts` 是两边共用的抓取/解析逻辑。`wrangler.toml` 已声明 `pages_build_output_dir = "dist"`。
 
-**方式一：Git 集成（推荐，push 自动部署）**
+**方式一：GitHub Actions（推荐，push 自动部署）**
 
-1. Cloudflare Dashboard → Workers & Pages → Create → Pages → Connect to Git，选择本仓库
-2. 构建配置：
-   - Framework preset：`None`（或 `Vite`，只要下面两项对就行）
-   - Build command：`pnpm cf:build`
-   - Build output directory：`dist`
-   - 环境变量（可选）：`NODE_VERSION=20`
-3. Save and Deploy → 得到 `https://<project>.pages.dev`（自定义域名免费，在 Custom domains 里加）
-4. 之后每次 push 到 main 自动构建部署，其他分支/PR 会生成独立预览 URL
-5. 首次部署后检查一次 `/api/shows?q=friends`：若返回 502，说明上游对 Cloudflare 出口 IP 做了风控（见下方"已知限制"）
+仓库已包含 `.github/workflows/deploy-cloudflare-pages.yml`。推送到 `main` 后会自动安装依赖、类型检查、构建并部署到现有的 `modern-word` Pages 项目。
+
+首次启用需要在 GitHub 仓库的 **Settings → Secrets and variables → Actions** 添加：
+
+- `CLOUDFLARE_API_TOKEN`：在 Cloudflare Dashboard → My Profile → API Tokens 创建
+- Token 权限：Account → Cloudflare Pages → Edit
+- Account resources：选择当前 Cloudflare 账户
+
+未配置 Token 时工作流会给出警告并跳过部署，不会产生失败告警；配置完成后 push 到 `main`，或在 Actions 页面手动运行 `Deploy to Cloudflare Pages` 即可。
 
 **方式二：wrangler 命令行**
 

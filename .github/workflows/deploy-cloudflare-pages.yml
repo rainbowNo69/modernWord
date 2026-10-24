@@ -1,0 +1,68 @@
+name: Deploy to Cloudflare Pages
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cloudflare-pages-production
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_ACCOUNT_ID: 1a68bd710f9cbddc8ff213d63aec5b9c
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Type-check
+        run: pnpm ts-check
+
+      - name: Build for Cloudflare Pages
+        run: pnpm cf:build
+
+      - name: Check Cloudflare credentials
+        id: credentials
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          if [[ -n "$CLOUDFLARE_API_TOKEN" ]]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::CLOUDFLARE_API_TOKEN is not configured; deployment was skipped."
+          fi
+
+      - name: Deploy production
+        if: steps.credentials.outputs.available == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: >-
+          pnpm exec wrangler pages deploy dist
+          --project-name modern-word
+          --branch main
+          --commit-hash "$GITHUB_SHA"
+          --commit-message "$(git log -1 --pretty=%s)"
